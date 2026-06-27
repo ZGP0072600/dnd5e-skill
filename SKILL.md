@@ -329,7 +329,7 @@ magic 雷神之锤                # 魔法物品 → 类型·稀有度·调谐 +
 ```
 - 覆盖：法术 1179、怪物 1164+85族（含 2014《怪物图鉴》426 只正文 statblock 解析，PHB14 优先·主显）、魔法物品 577（含 2014 城主指南 DMG 246 件正文解析，PHB14 优先·主显）。
 - **职业/子职已接入**（`class` / `subclass --class <职业>`）：**PHB14 基准**（玩家手册/职业 子目录）+ PHB24/塔莎/珊娜萨/奇械师/铳士/血猎手/第三方 追加，共 **15 职业 + 207 子职**；按来源分组、PHB14 在前。warlock 统一为「邪术师」。
-- **种族/专长/装备也已接入**（`race` / `feat` / `equip`，均 **PHB14 基准** + PHB24/扩展追加）：种族 28（PHB14 含半精灵/半兽人，PHB24 已并入故仅在 PHB14 查得到）、专长 140（PHB14 核心 + PHB24/塔莎…）、装备 PHB14 武器+护甲（列序异于 2024、无精通词条）。**dnd5e 现 8 域全通**（spell/monster/class/subclass/race/feat/equip/magic），与 dnd5r 同功能但 2014 优先。
+- **种族/专长/装备也已接入**（`race` / `feat` / `equip`，均 **PHB14 基准** + PHB24/扩展追加）：种族 28（PHB14 含半精灵/半兽人，PHB24 已并入故仅在 PHB14 查得到）、专长 140（PHB14 核心 + PHB24/塔莎…）、装备 PHB14 武器/护甲/工具/冒险用品 213 件（含法器奥术法器/德鲁伊法器/圣徽；列序异于 2024、无精通词条）。**dnd5e 现 8 域全通**（spell/monster/class/subclass/race/feat/equip/magic），与 dnd5r 同功能但 2014 优先。
 - 资料库 md 改后跑 `python .claude/skills/dnd5e/tools/build_index.py` 重建。
 
 ### 关键索引文件（CLI 未覆盖的类别从这里起手）

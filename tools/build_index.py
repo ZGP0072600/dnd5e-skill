@@ -803,11 +803,24 @@ def split_cn_en(s):
     return (m.group(1).strip(), m.group(2).strip()) if m else (s, "")
 
 
-def parse_equip_table(path, docs_root, kind, cols):
+def parse_equip_table(path, docs_root, kind, cols, carry_category=True):
+    """carry_category=True（武器/护甲）：分组行作为后续条目的 category（每个条目都隶属某组，传递正确）。
+    =False（工具/冒险用品）：分组行（奥术法器/圣徽/工匠工具…）本身作为可查条目发出，且【不】向后传递
+    —— 这些表里分组只含寥寥几个成员、后面紧跟无关的顶层条目，传递会把背包/火把误标成圣徽。"""
     rel = path.relative_to(docs_root).as_posix()
     src = derive_source(rel)
+    edition = "2024" if "2024" in src else "2014"
+    prio = source_priority(src)
     lines = path.read_text(encoding="utf-8").split("\n")
     recs, category = [], None
+
+    def emit(name, en, cells, cat, lineno):
+        rec = {"kind": kind, "name": name, "en": en, "category": cat,
+               "source": src, "edition": edition, "priority": prio, "path": rel, "line": lineno}
+        for j, col in enumerate(cols):
+            rec[col] = cells[1 + j] if cells and 1 + j < len(cells) else None
+        recs.append(rec)
+
     for i, ln in enumerate(lines):
         s = ln.strip()
         if not s.startswith("|"):
@@ -815,20 +828,21 @@ def parse_equip_table(path, docs_root, kind, cols):
         cells = [c.strip() for c in s.strip("|").split("|")]
         if not cells or all(set(c) <= set("-: ") for c in cells):       # 分隔行
             continue
-        if cells[0] in ("名称", "护甲") or (len(cells) > 1 and "护甲等级" in cells[1]):  # 表头
+        if cells[0] in ("名称", "护甲", "物品") or (len(cells) > 1 and "护甲等级" in cells[1]):  # 表头
             continue
-        if cells[0] and all(not c for c in cells[1:]):                  # 分类行
-            category = re.sub(r"\*+", "", cells[0]).strip()
+        if cells[0] and all(not c for c in cells[1:]):                  # 无价无重 = 分组行
+            cat = re.sub(r"\*+", "", cells[0]).strip()
+            if carry_category:
+                category = cat
+            else:                                                       # 分组名本身入库，不向后传递
+                nm, en = split_cn_en(cat)
+                if nm:
+                    emit(nm, en, None, None, i + 1)
             continue
         name, en = split_cn_en(cells[0])
         if not name:
             continue
-        rec = {"kind": kind, "name": name, "en": en, "category": category,
-               "source": src, "edition": ("2024" if "2024" in src else "2014"), "priority": source_priority(src),
-               "path": rel, "line": i + 1}
-        for j, col in enumerate(cols):
-            rec[col] = cells[1 + j] if 1 + j < len(cells) else None
-        recs.append(rec)
+        emit(name, en, cells, category if carry_category else None, i + 1)
     return recs
 
 
@@ -841,12 +855,18 @@ def build_equipment(docs_root, out_dir):
     if (edir / "护甲与盾牌.md").exists():
         recs += parse_equip_table(edir / "护甲与盾牌.md", docs_root, "armor",
                                   ["cost", "ac", "strength", "stealth", "weight"])
+    if (edir / "工具.md").exists():                   # 工匠工具/乐器/盗贼工具/赌具/草药包…
+        recs += parse_equip_table(edir / "工具.md", docs_root, "tool", ["cost", "weight"], carry_category=False)
+    if (edir / "冒险用品.md").exists():               # 冒险装备 + 法器（奥术法器/德鲁伊法器/圣徽）+ 装备包
+        recs += parse_equip_table(edir / "冒险用品.md", docs_root, "gear", ["cost", "weight"], carry_category=False)
     out = out_dir / "equipment.json"
     out.write_text(json.dumps({"_schema": "equipment-index-v1", "item_count": len(recs),
                                "equipment": recs}, ensure_ascii=False, indent=0), encoding="utf-8")
-    nw = sum(1 for r in recs if r["kind"] == "weapon")
-    na = sum(1 for r in recs if r["kind"] == "armor")
-    print(f"\n[装备] ✅ {out}\n   {nw} 武器 + {na} 护甲（PHB14；工具/法器待接入）")
+    by_kind = {}
+    for r in recs:
+        by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
+    print(f"\n[装备] ✅ {out}\n   {len(recs)} 件（PHB14）: " +
+          "、".join(f"{k}:{v}" for k, v in sorted(by_kind.items(), key=lambda x: -x[1])))
 
 
 # ---------------- 专长（best-effort）----------------
