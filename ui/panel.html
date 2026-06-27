@@ -1,0 +1,2051 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>DnD5e 战役面板</title>
+
+<style>
+  :root {
+    /* 冷色深石板 — 高对比、低色噪 */
+    --bg-deep:    #0f1218;
+    --bg:         #161a23;
+    --bg-card:    #1e2230;
+    --bg-hi:      #2a2f3e;
+    --border:     #2d3142;
+    --border-hi:  #4a5068;
+
+    --text:       #ecedef;    /* 主文字 95% 对比 */
+    --text-dim:   #b8bdc8;    /* 次要 75% */
+    --text-mute:  #7a8090;    /* 时间戳等 50% */
+
+    --hp-good:    #5dc97d;
+    --hp-warn:    #f5b942;
+    --hp-bad:     #f0584c;
+    --xp:         #5fc9cd;
+    --gold:       #f0c947;
+    --magic:      #b58af0;
+    --pink:       #f08aaa;
+
+    --mode-G:     #f0584c;
+    --mode-I:     #5dc97d;
+    --mode-idle:  #7a8090;
+
+    --chip-conc:   #f0c947;
+    --chip-buff:   #5dc97d;
+    --chip-debuff: #f0584c;
+    --chip-long:   #b58af0;
+    --chip-pos:    #5fc9cd;
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg-deep);
+    color: var(--text);
+  }
+
+  body {
+    padding: 12px;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  /* 数字用等宽 tabular-nums，对齐 HP/XP/亲和度数值 */
+  .bar-label .rhs, .player-ac, .chp, .modal-kv dd, .ability-cell .ab-score,
+  .ability-cell .ab-mod, .ability-cell .ab-save, .affinity-label, .hp-fuzzy {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* === 像素卡片：硬边 + 双层 box-shadow 制造立体感 === */
+  .card {
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    box-shadow:
+      inset 1px 1px 0 var(--border-hi),
+      inset -1px -1px 0 var(--bg-deep),
+      2px 2px 0 var(--bg-deep);
+  }
+
+  .card-title {
+    margin: 0 0 10px;
+    padding: 0 0 7px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .card-title .right-meta {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-mute);
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+
+  /* === 顶部 mode badge + 战役名（mode 一行，name 一行确保不被挤换行） === */
+  .header .mode-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .mode-badge {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 3px 9px;
+    color: var(--bg-deep);
+    letter-spacing: 1px;
+    white-space: nowrap;
+    border: 1px solid var(--bg-deep);
+    box-shadow: 1px 1px 0 var(--bg-deep);
+    flex-shrink: 0;
+  }
+  .mode-badge.G    { background: var(--mode-G); color: #fff; }
+  .mode-badge.I    { background: var(--mode-I); }
+  .mode-badge.idle { background: var(--mode-idle); color: var(--text); }
+
+  .campaign-name {
+    font-weight: 700;
+    font-size: 16px;
+    flex: 1;
+    min-width: 0;
+    color: var(--text);
+    line-height: 1.3;
+    /* 中文允许折行但保留可读：词内不强拆 */
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+  .dm-style {
+    color: var(--text-dim);
+    font-size: 12px;
+    margin-bottom: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* === 时段/天气/地点条 === */
+  .env-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--text-dim);
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .env-pill {
+    background: var(--bg-hi);
+    padding: 3px 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .env-pill .icon { font-size: 14px; line-height: 1; }
+  .env-time { color: var(--gold); }
+  .env-weather { color: var(--xp); }
+  .env-loc {
+    color: var(--text-dim);
+    font-size: 13px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* === 玩家行 === */
+  .player-row {
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+  }
+  .player-row:first-of-type { border-top: 0; padding-top: 0; }
+  .player-row .top {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 14px;
+    gap: 8px;
+    align-items: center;
+  }
+  .player-name { font-weight: 700; color: var(--text); font-size: 15px; }
+  .player-class { color: var(--text-dim); margin-left: 6px; font-size: 12px; }
+  .player-ac {
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg-deep);
+    padding: 2px 8px;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    border: 1px solid var(--border-hi);
+    color: var(--gold);
+  }
+  .player-ac::before { content: '🛡'; margin-right: 4px; font-size: 12px; }
+
+  /* === 像素分段 HP 条 === */
+  .bar {
+    position: relative;
+    height: 12px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .bar .fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: var(--hp-good);
+    transition: width 0.25s steps(8);
+    /* 分段条纹：每 8px 一格 */
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 7px,
+      rgba(0,0,0,0.25) 7px,
+      rgba(0,0,0,0.25) 8px
+    );
+  }
+  .bar.warn .fill { background-color: var(--hp-warn); }
+  .bar.bad .fill  { background-color: var(--hp-bad); }
+  .bar.bad .fill  { animation: pulse 0.9s steps(2) infinite; }
+  @keyframes pulse { 50% { opacity: 0.55; } }
+
+  .bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 3px;
+    letter-spacing: 0;
+  }
+  .bar-label .lhs { color: var(--text); }
+  .bar-label .rhs { color: var(--text-dim); }
+
+  /* === XP 条（青色细一点） === */
+  .xp-bar { height: 7px; margin-top: 5px; }
+  .xp-bar .fill {
+    background-color: var(--xp);
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0, transparent 6px,
+      rgba(0,0,0,0.3) 6px, rgba(0,0,0,0.3) 7px
+    );
+  }
+  .xp-label { font-size: 11px; }
+  .xp-label .lhs { color: var(--xp); }
+
+  /* === 状态/持续效果 chip === */
+  .chips {
+    margin-top: 7px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--bg-hi);
+    padding: 2px 7px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .chip .dur {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: 3px;
+  }
+  .chip.conc   { background: var(--bg-deep); color: var(--chip-conc); border-color: var(--chip-conc); }
+  .chip.buff   { background: var(--bg-deep); color: var(--chip-buff); border-color: var(--chip-buff); }
+  .chip.debuff { background: var(--bg-deep); color: var(--chip-debuff); border-color: var(--chip-debuff); }
+  .chip.long   { background: var(--bg-deep); color: var(--chip-long); border-color: var(--chip-long); }
+  .chip.pos    { background: var(--bg-deep); color: var(--chip-pos); border-color: var(--chip-pos); }
+
+  /* === 战斗视图 === */
+  .combat-meta {
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 8px;
+    background: var(--bg-deep);
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+  }
+  .combat-meta .round { color: var(--mode-G); font-weight: 700; }
+
+  .init-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .init-table th, .init-table td {
+    padding: 6px 8px;
+    text-align: left;
+    border-top: 1px solid var(--border);
+  }
+  .init-table th {
+    border-top: 0;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+  .init-table tr.current {
+    background: rgba(240, 88, 76, 0.15);
+    font-weight: 700;
+  }
+  .init-table tr.current td:first-child::before {
+    content: '▶';
+    color: var(--mode-G);
+    margin-right: 4px;
+  }
+  .init-table .pc  { color: var(--hp-good); }
+  .init-table .npc { color: var(--text-dim); }
+  .init-table .hp-fuzzy {
+    font-size: 12px;
+    padding: 1px 6px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+  }
+
+  /* === 沙盒/模组通用行 === */
+  .sb-group {
+    margin-top: 10px;
+  }
+  .sb-group:first-child { margin-top: 0; }
+  .sb-group-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--gold);
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .sb-group-title .icon { font-size: 14px; }
+  .sb-row {
+    padding: 5px 0 5px 16px;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    color: var(--text);
+    border-top: 1px solid var(--border);
+    position: relative;
+  }
+  .sb-row.first { border-top: 0; }
+  .sb-row::before {
+    content: '·';
+    position: absolute;
+    left: 4px;
+    color: var(--text-dim);
+  }
+  .sb-meta {
+    color: var(--text-dim);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  /* === 存档列表 === */
+  .save-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .save-row:first-of-type { border-top: 0; }
+  .save-info { flex: 1; min-width: 0; }
+  .save-name {
+    font-weight: 700;
+    color: var(--text);
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .save-chapter {
+    font-size: 11px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .save-time {
+    font-size: 11px;
+    color: var(--text-mute);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .btn-sm {
+    padding: 4px 9px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    display: inline-block;
+    width: auto;
+    margin-bottom: 0;
+    border: 1px solid var(--border-hi);
+    background: var(--bg-card);
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+    box-shadow:
+      inset 1px 1px 0 rgba(255,255,255,0.05),
+      inset -1px -1px 0 var(--bg-deep),
+      1px 1px 0 var(--bg-deep);
+  }
+  .btn-sm:hover { background: var(--bg-hi); color: var(--gold); border-color: var(--gold); }
+  .btn-sm:active { transform: translate(1px,1px); }
+
+  /* === 战役浏览器（idle 模式）=== */
+  .campaign-card {
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    margin-bottom: 10px;
+    box-shadow: 2px 2px 0 var(--bg-deep);
+  }
+  .campaign-card-header {
+    padding: 9px 12px;
+    background: var(--bg-hi);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .campaign-card-name {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .campaign-card-last {
+    font-size: 11px;
+    color: var(--text-mute);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .campaign-card-style {
+    padding: 5px 12px 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .campaign-save-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .campaign-save-row:first-of-type { border-top: 0; }
+  .campaign-save-info { flex: 1; min-width: 0; }
+  .campaign-save-name {
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .campaign-save-chapter {
+    font-size: 11px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .campaign-save-time {
+    font-size: 11px;
+    color: var(--text-mute);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .campaign-no-saves {
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--text-mute);
+    font-style: italic;
+  }
+
+  /* === 同行 NPC === */
+  .companion-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 0;
+    font-size: 13px;
+    border-top: 1px solid var(--border);
+  }
+  .companion-row:first-of-type { border-top: 0; }
+  .companion-row .ctype {
+    font-size: 15px;
+    width: 18px;
+    text-align: center;
+  }
+  .companion-row .cname { flex: 1; }
+  .companion-row .chp {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  /* === 模组进度 === */
+  .module-line {
+    font-size: 13px;
+    margin: 4px 0;
+    color: var(--text);
+  }
+  .module-line strong {
+    color: var(--text-dim);
+    font-weight: 600;
+    margin-right: 4px;
+  }
+
+  /* === 空态 === */
+  .empty {
+    color: var(--text-dim);
+    font-size: 13px;
+    text-align: center;
+    padding: 16px 0;
+    line-height: 1.8;
+  }
+  .empty strong { color: var(--gold); }
+
+  /* === 像素按钮 === */
+  .actions {
+    position: sticky;
+    bottom: -12px;
+    margin: 0 -12px -12px;
+    padding: 10px 12px;
+    background: var(--bg-deep);
+    border-top: 2px solid var(--border);
+  }
+  .actions h4 {
+    margin: 0 0 7px;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 7px 11px;
+    margin-bottom: 5px;
+    border: 1px solid var(--border-hi);
+    background: var(--bg-card);
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    box-shadow:
+      inset 1px 1px 0 rgba(255,255,255,0.05),
+      inset -1px -1px 0 var(--bg-deep),
+      1px 1px 0 var(--bg-deep);
+  }
+  .btn:hover {
+    background: var(--bg-hi);
+    color: var(--gold);
+    border-color: var(--gold);
+  }
+  .btn:active {
+    transform: translate(1px, 1px);
+    box-shadow:
+      inset 1px 1px 0 var(--bg-deep),
+      inset -1px -1px 0 rgba(255,255,255,0.05);
+  }
+  .btn-row {
+    display: flex;
+    gap: 4px;
+  }
+  .btn-row .btn { margin-bottom: 0; flex: 1; }
+
+  .last-update {
+    text-align: center;
+    color: var(--text-mute);
+    font-size: 11px;
+    margin: 6px 0;
+    letter-spacing: 0;
+  }
+
+  /* === 滚动条像素化 === */
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border: 1px solid var(--border-hi);
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
+
+  /* === 可点击行 === */
+  .clickable { cursor: pointer; transition: background 0.1s; }
+  .clickable:hover {
+    background: var(--bg-hi);
+    outline: 1px solid var(--border-hi);
+    outline-offset: -1px;
+  }
+
+  /* === Modal === */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.72);
+    z-index: 1000;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 20px 8px;
+    overflow-y: auto;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal {
+    background: var(--bg-card);
+    border: 2px solid var(--border-hi);
+    width: 100%;
+    max-width: 480px;
+    box-shadow:
+      inset 1px 1px 0 var(--border-hi),
+      inset -1px -1px 0 var(--bg-deep),
+      4px 4px 0 rgba(0,0,0,0.5);
+    position: relative;
+  }
+  .modal-header {
+    background: var(--bg-deep);
+    padding: 10px 14px;
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .modal-title {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+  }
+  .modal-subtitle {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: 4px;
+  }
+  .modal-close {
+    background: var(--bg-card);
+    border: 1px solid var(--border-hi);
+    color: var(--text);
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    line-height: 1;
+    box-shadow: 1px 1px 0 var(--bg-deep);
+  }
+  .modal-close:hover {
+    background: var(--mode-G);
+    border-color: var(--mode-G);
+    color: #fff;
+  }
+  .modal-body {
+    padding: 12px 14px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    font-size: 13px;
+  }
+  .modal-section { margin-bottom: 14px; }
+  .modal-section:last-child { margin-bottom: 0; }
+  .modal-section-title {
+    font-size: 12px;
+    color: var(--gold);
+    font-weight: 600;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 5px;
+    margin-bottom: 7px;
+  }
+  .modal-kv {
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    gap: 5px 10px;
+    font-size: 13px;
+    margin: 0;
+  }
+  .modal-kv dt { color: var(--text-dim); font-weight: normal; }
+  .modal-kv dd { margin: 0; color: var(--text); }
+  .modal-desc {
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--text);
+    margin: 0;
+  }
+  .modal-desc.dim { color: var(--text-dim); }
+
+  /* 关系阶段卡 */
+  .stage-card {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    margin-bottom: 4px;
+  }
+  .stage-card.current {
+    border-color: var(--gold);
+    background: rgba(240, 201, 71, 0.06);
+  }
+  .stage-card .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+  }
+  .stage-card .name { font-weight: 700; color: var(--text); }
+  .stage-card.current .name { color: var(--gold); }
+  .stage-card .threshold { font-size: 11px; color: var(--text-dim); }
+  .stage-card .desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+  /* 亲和度条 */
+  .affinity-bar {
+    height: 10px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+    margin: 4px 0 2px;
+  }
+  .affinity-bar .fill {
+    height: 100%;
+    background: var(--pink);
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0, transparent 6px,
+      rgba(0,0,0,0.3) 6px, rgba(0,0,0,0.3) 7px
+    );
+  }
+  .affinity-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  /* 列表项 */
+  .modal-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .modal-list li {
+    padding: 4px 0 4px 12px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    position: relative;
+  }
+  .modal-list li:first-child { border-top: 0; }
+  .modal-list li::before {
+    content: '·';
+    position: absolute;
+    left: 2px;
+    color: var(--text-dim);
+  }
+  .modal-list li strong {
+    color: var(--text);
+    margin-right: 6px;
+  }
+  .modal-list li .meta {
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+
+  /* 属性表 */
+  .ability-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
+  .ability-cell {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    padding: 6px;
+    text-align: center;
+  }
+  .ability-cell .ab-name {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+  .ability-cell .ab-score {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 2px 0;
+  }
+  .ability-cell .ab-mod {
+    font-size: 12px;
+    color: var(--gold);
+  }
+  .ability-cell .ab-save {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .ability-cell .ab-save.prof { color: var(--xp); }
+
+  /* 属性 chip 行（喜好/厌恶等） */
+  .tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .tag {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .tag.like { color: var(--hp-good); border-color: var(--hp-good); }
+  .tag.dislike { color: var(--hp-bad); border-color: var(--hp-bad); }
+
+  /* Modal 底部按钮 */
+  .modal-footer {
+    border-top: 2px solid var(--border);
+    padding: 8px 14px;
+    background: var(--bg-deep);
+    display: flex;
+    gap: 6px;
+  }
+  .modal-footer .btn { margin-bottom: 0; flex: 1; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="empty">等待数据…</div>
+</div>
+
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="modal-title" class="modal-title"></span>
+      <span id="modal-subtitle" class="modal-subtitle"></span>
+      <button class="modal-close" onclick="closeModal()" title="关闭 (Esc)">✕</button>
+    </div>
+    <div id="modal-body" class="modal-body"></div>
+    <div id="modal-footer" class="modal-footer" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+  // === DOM helpers ===
+  function el(tag, attrs, children) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k === 'text') e.textContent = attrs[k];
+      else if (k === 'html') e.innerHTML = attrs[k];
+      else e.setAttribute(k, attrs[k]);
+    });
+    if (children) children.forEach(function (c) {
+      if (c) e.appendChild(c);
+    });
+    return e;
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '';
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      var p = function (n) { return n < 10 ? '0' + n : n; };
+      return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) +
+             ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    } catch (e) { return iso; }
+  }
+
+  // === 当前数据快照（让 modal 能读 campaign 信息） ===
+  var currentData = null;
+
+  // === v2 投影缓存（由 onData/ingest 填充）===
+  var campaignIndex = {};       // normCampaign(战役名) -> { characters|npcs|companions: { 名: parsed } }
+  var allSavesData = null;      // all-saves.json（idle 战役浏览器 + G/I 存档列表）
+  var modulesIndexData = null;  // modules-index.json（idle 模组列表）
+
+  // 战役名规范化：消除「目录(连字符) / 索引 / 会话(括号)」三处命名漂移，做模糊匹配
+  function normCampaign(s) { return String(s == null ? '' : s).replace(/[（）()\-—\s·]/g, ''); }
+
+  // 当前战役存档列表：从 all-saves 按规范化战役名派生（替代 v1 的 session.saves[]）
+  function deriveSaves(data, allSaves) {
+    if (!allSaves || !allSaves.campaigns || !data || !data.campaign || !data.campaign.name) return null;
+    var target = normCampaign(data.campaign.name);
+    for (var i = 0; i < allSaves.campaigns.length; i++) {
+      var c = allSaves.campaigns[i];
+      if (c && normCampaign(c.name) === target && c.saves && c.saves.length) return c.saves;
+    }
+    return null;
+  }
+
+  // 弹窗实体查找：从内联的 campaignIndex 取（不再 fetch / readJson）
+  function lookupEntity(type, name) {
+    var camp = currentData && currentData.campaign && currentData.campaign.name;
+    if (!camp) return undefined;
+    var idx = campaignIndex[normCampaign(camp)];
+    return idx && idx[type] && idx[type][name];
+  }
+
+  // === Modal 基础设施 ===
+  function openModal(title, subtitle, contentEl, footerEl) {
+    document.getElementById('modal-title').textContent = title || '';
+    document.getElementById('modal-subtitle').textContent = subtitle || '';
+    var body = document.getElementById('modal-body');
+    body.innerHTML = '';
+    if (contentEl) body.appendChild(contentEl);
+    var footer = document.getElementById('modal-footer');
+    footer.innerHTML = '';
+    if (footerEl) {
+      footer.appendChild(footerEl);
+      footer.style.display = '';
+    } else {
+      footer.style.display = 'none';
+    }
+    document.getElementById('modal-overlay').classList.remove('hidden');
+  }
+  function closeModal() {
+    document.getElementById('modal-overlay').classList.add('hidden');
+  }
+  // ESC 关闭
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeModal();
+  });
+  // 点击 overlay 自身（不是 modal 内部）关闭
+  setTimeout(function () {
+    var ov = document.getElementById('modal-overlay');
+    if (ov) ov.addEventListener('click', function (e) {
+      if (e.target === ov) closeModal();
+    });
+  }, 0);
+
+  function loadingEl(msg) {
+    return el('div', { class: 'empty', text: msg || '加载中…' });
+  }
+  function errorEl(msg) {
+    var d = el('div', { class: 'empty', text: msg || '档案缺失' });
+    d.style.color = 'var(--hp-bad)';
+    return d;
+  }
+
+  // === 详情入口（v2：从内联的 campaignIndex 同步读取，不再 fetch / readJson）===
+  function showCharacter(name) {
+    var data = lookupEntity('characters', name);
+    if (!data) { openModal(name, '', errorEl('档案缺失：characters/' + name + '.json')); return; }
+    renderCharacterModal(richToV1(data));   // open 时投影：canonical 富 schema → 弹窗 v1 形状（对旧 v1 幂等）
+  }
+  function showNpc(name) {
+    var data = lookupEntity('npcs', name);
+    if (!data) { openModal(name, '', errorEl('档案缺失：npcs/' + name + '.json')); return; }
+    renderNpcModal(data);
+  }
+  function showCompanion(name) {
+    // 先 companions/，没有再 fallback 到 npcs/（人形同行 NPC 在 npcs/ 里）
+    var comp = lookupEntity('companions', name);
+    if (comp) { renderCompanionModal(comp); return; }
+    var npc = lookupEntity('npcs', name);
+    if (npc) { renderNpcModal(npc); return; }
+    openModal(name, '', errorEl('档案缺失：companions/' + name + '.json'));
+  }
+
+  // === Modal 渲染：通用 section 工厂 ===
+  function modalSection(title, contentEls) {
+    var children = [el('div', { class: 'modal-section-title', text: title })];
+    if (Array.isArray(contentEls)) contentEls.forEach(function (c) { if (c) children.push(c); });
+    else if (contentEls) children.push(contentEls);
+    return el('div', { class: 'modal-section' }, children);
+  }
+  function kvTable(rows) {
+    // rows: [{k, v}]
+    var dl = el('dl', { class: 'modal-kv' });
+    rows.forEach(function (r) {
+      if (r.v == null || r.v === '') return;
+      dl.appendChild(el('dt', { text: r.k }));
+      dl.appendChild(el('dd', { text: String(r.v) }));
+    });
+    return dl;
+  }
+  function tagRow(items, cls) {
+    if (!items || !items.length) return null;
+    return el('div', { class: 'tag-row' }, items.map(function (t) {
+      return el('span', { class: 'tag' + (cls ? ' ' + cls : ''), text: String(t) });
+    }));
+  }
+  function bulletList(items) {
+    if (!items || !items.length) return null;
+    var ul = el('ul', { class: 'modal-list' });
+    items.forEach(function (it) {
+      if (typeof it === 'string') {
+        ul.appendChild(el('li', { text: it }));
+      } else if (it && it.label && it.content) {
+        var li = el('li', null, [
+          el('strong', { text: it.label + '：' }),
+          document.createTextNode(it.content)
+        ]);
+        ul.appendChild(li);
+      } else if (it && it.service && it.desc) {
+        ul.appendChild(el('li', null, [
+          el('strong', { text: it.service }),
+          el('span', { class: 'meta', text: ' — ' + it.desc })
+        ]));
+      } else if (it && it.item) {
+        ul.appendChild(el('li', null, [
+          el('strong', { text: it.item }),
+          el('span', { class: 'meta', text: ' ' + (it.affinityGain || '') })
+        ]));
+      } else if (it && it.name) {
+        var children = [el('strong', { text: it.name })];
+        if (it.desc) children.push(el('span', { class: 'meta', text: ' — ' + it.desc }));
+        if (it.notes) children.push(el('span', { class: 'meta', text: '（' + it.notes + '）' }));
+        ul.appendChild(el('li', null, children));
+      }
+    });
+    return ul;
+  }
+
+  // === NPC modal ===
+  function renderNpcModal(npc) {
+    var sections = [];
+    // basics
+    if (npc.basics) {
+      var b = npc.basics;
+      sections.push(modalSection('基本信息', [
+        kvTable([
+          { k: '种族', v: b.race },
+          { k: '性别', v: b.gender },
+          { k: '年龄', v: b.age },
+          { k: '职业', v: b.occupation },
+          { k: '居所', v: b.location }
+        ])
+      ]));
+    }
+    // 外貌
+    if (npc.appearance) {
+      sections.push(modalSection('外貌', el('p', { class: 'modal-desc dim', text: npc.appearance })));
+    }
+    // 公开背景
+    if (npc.background) {
+      sections.push(modalSection('公开背景', el('p', { class: 'modal-desc dim', text: npc.background })));
+    }
+    // 关系
+    if (npc.relationship) {
+      var r = npc.relationship;
+      var children = [];
+      children.push(kvTable([
+        { k: '阶段', v: r.stage },
+        { k: '上次见面', v: r.lastSeen },
+        { k: '相识于', v: r.knownSince },
+        { k: '关系总结', v: r.summary }
+      ]));
+      if (r.affinity != null && r.affinityMax) {
+        var ratio = Math.max(0, Math.min(1, r.affinity / r.affinityMax));
+        var bar = el('div', { class: 'affinity-bar' }, [el('div', { class: 'fill' })]);
+        bar.firstChild.style.width = (ratio * 100) + '%';
+        children.push(bar);
+        children.push(el('div', { class: 'affinity-label' }, [
+          el('span', { text: '亲和度' }),
+          el('span', { text: r.affinity + ' / ' + r.affinityMax })
+        ]));
+      }
+      if (r.lastInteraction) {
+        children.push(el('p', {
+          class: 'modal-desc dim',
+          text: '最近互动：' + r.lastInteraction
+        }));
+      }
+      sections.push(modalSection('关系', children));
+    }
+    // 阶段表
+    if (npc.stageTable && npc.stageTable.length) {
+      sections.push(modalSection('关系阶段', npc.stageTable.map(function (s) {
+        return el('div', { class: 'stage-card' + (s.current ? ' current' : '') }, [
+          el('div', { class: 'top' }, [
+            el('span', { class: 'name', text: (s.current ? '◆ ' : '') + s.stage }),
+            el('span', { class: 'threshold', text: s.threshold || '' })
+          ]),
+          el('div', { class: 'desc', text: s.desc || '' })
+        ]);
+      })));
+    }
+    // 战斗能力
+    if (npc.combatAbilities && npc.combatAbilities.length) {
+      sections.push(modalSection('战斗能力', bulletList(npc.combatAbilities)));
+    }
+    // 已知信息
+    if (npc.knownFacts && npc.knownFacts.length) {
+      sections.push(modalSection('已知信息', bulletList(npc.knownFacts)));
+    }
+    // 可请求服务
+    if (npc.canAskFor && npc.canAskFor.length) {
+      sections.push(modalSection('可请求服务', bulletList(npc.canAskFor)));
+    }
+    // 性格
+    if (npc.personality) {
+      sections.push(modalSection('性格', el('p', { class: 'modal-desc dim', text: npc.personality })));
+    }
+    // 喜好 / 厌恶
+    if (npc.preferences) {
+      var p = npc.preferences;
+      var prefChildren = [];
+      if (p.likes && p.likes.length) {
+        prefChildren.push(el('div', { class: 'modal-kv' }, [
+          el('dt', { text: '喜好' }),
+          el('dd', null, [tagRow(p.likes, 'like')])
+        ]));
+      }
+      if (p.dislikes && p.dislikes.length) {
+        prefChildren.push(el('div', { class: 'modal-kv' }, [
+          el('dt', { text: '厌恶' }),
+          el('dd', null, [tagRow(p.dislikes, 'dislike')])
+        ]));
+      }
+      if (prefChildren.length) sections.push(modalSection('喜好 / 厌恶', prefChildren));
+    }
+    // 礼物提示
+    if (npc.giftHints && npc.giftHints.length) {
+      sections.push(modalSection('礼物清单', bulletList(npc.giftHints)));
+    }
+    // 当前境况
+    if (npc.currentSituation) {
+      sections.push(modalSection('当前境况', el('p', { class: 'modal-desc', text: npc.currentSituation })));
+    }
+    var container = el('div', null, sections);
+    var subtitle = (npc.aliases && npc.aliases.length) ? npc.aliases[0] : '';
+    openModal(npc.fullName || npc.name, subtitle, container);
+  }
+
+  // === Character modal ===
+  function renderCharacterModal(c) {
+    var sections = [];
+    // 战斗速查
+    if (c.combat) {
+      var cb = c.combat;
+      sections.push(modalSection('战斗速查', kvTable([
+        { k: 'HP', v: (cb.hp ? cb.hp.cur + ' / ' + cb.hp.max : '-') },
+        { k: 'AC', v: (cb.ac ? (cb.ac.base + (cb.ac.withShield ? '（持盾 ' + cb.ac.withShield + '）' : '')) : '-') },
+        { k: '速度', v: cb.speed },
+        { k: '先攻', v: cb.init },
+        { k: '被动察觉', v: cb.passivePerc },
+        { k: '熟练加值', v: cb.profBonus }
+      ])));
+    }
+    // 属性 grid
+    if (c.abilities) {
+      var ab = c.abilities;
+      var order = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+      var label = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
+      var grid = el('div', { class: 'ability-grid' }, order.map(function (k) {
+        var a = ab[k];
+        if (!a) return null;
+        return el('div', { class: 'ability-cell' }, [
+          el('div', { class: 'ab-name', text: label[k] }),
+          el('div', { class: 'ab-score', text: String(a.score != null ? a.score : '-') }),
+          el('div', { class: 'ab-mod', text: a.mod || '-' }),
+          el('div', { class: 'ab-save' + (a.proficient ? ' prof' : ''), text: '豁免 ' + (a.save || '-') })
+        ]);
+      }));
+      sections.push(modalSection('属性', grid));
+    }
+    // 技能
+    if (c.skills && c.skills.length) {
+      sections.push(modalSection('熟练技能', bulletList(c.skills.map(function (s) {
+        return { name: s.name + '（' + s.ability + '）', desc: s.bonus };
+      }))));
+    }
+    // 攻击
+    if (c.attacks && c.attacks.length) {
+      sections.push(modalSection('攻击', bulletList(c.attacks.map(function (a) {
+        return { name: a.name, desc: '命中 ' + a.hit + '，伤害 ' + a.damage, notes: a.notes };
+      }))));
+    }
+    // 资源
+    if (c.resources && c.resources.length) {
+      sections.push(modalSection('资源', bulletList(c.resources.map(function (r) {
+        return { name: r.name, desc: r.cur + ' / ' + r.max + (r.reset ? '（' + r.reset + '恢复）' : '') };
+      }))));
+    }
+    // 法术
+    if (c.spells) {
+      var sp = c.spells;
+      var spChildren = [];
+      if (sp.spellAttack || sp.spellSaveDC) {
+        spChildren.push(kvTable([
+          { k: '施法属性', v: sp.casterAbility },
+          { k: '法术攻击', v: sp.spellAttack },
+          { k: '法术 DC', v: sp.spellSaveDC }
+        ]));
+      }
+      if (sp.cantripsKnown && sp.cantripsKnown.length) {
+        spChildren.push(el('div', { class: 'modal-kv' }, [
+          el('dt', { text: '戏法' }),
+          el('dd', null, [tagRow(sp.cantripsKnown)])
+        ]));
+      }
+      if (sp.level1Prepared && sp.level1Prepared.length) {
+        spChildren.push(el('div', { class: 'modal-kv' }, [
+          el('dt', { text: '1 环已备' }),
+          el('dd', null, [tagRow(sp.level1Prepared)])
+        ]));
+      }
+      sections.push(modalSection('法术', spChildren));
+    }
+    // 关键特性
+    if (c.keyFeatures && c.keyFeatures.length) {
+      sections.push(modalSection('关键特性', bulletList(c.keyFeatures.map(function (f) {
+        return { name: f.name, desc: f.desc, notes: f.source };
+      }))));
+    }
+    // 装备
+    if (c.equipment) {
+      var eq = c.equipment;
+      var rows = [];
+      if (eq.weapons) rows.push({ k: '武器', v: eq.weapons.join('、') });
+      if (eq.armor) rows.push({ k: '护甲', v: eq.armor.join('、') });
+      if (eq.tools) rows.push({ k: '工具', v: eq.tools.join('、') });
+      if (eq.pack) rows.push({ k: '套组', v: eq.pack });
+      if (eq.other) rows.push({ k: '其他', v: eq.other.join('、') });
+      if (rows.length) sections.push(modalSection('装备', kvTable(rows)));
+    }
+    // 财富
+    if (c.wealth) {
+      var w = c.wealth;
+      sections.push(modalSection('财富 / 资产', kvTable([
+        { k: '现金', v: w.cash },
+        { k: '房产', v: w.property },
+        { k: '货物', v: w.goods }
+      ])));
+    }
+
+    var container = el('div', null, sections);
+    var subtitle = c.classSummary || '';
+    if (c.race) subtitle = c.race + ' · ' + subtitle;
+    if (c.age) subtitle += '（' + c.age + ' 岁）';
+
+    // 底部：发消息让 AI 打开完整角色卡
+    var footer = null;
+    if (c.sheetPath) {
+      var btn = el('button', { class: 'btn', text: '📄 请 AI 打开完整角色卡 HTML' });
+      btn.onclick = function () {
+        if (typeof skillPanel !== 'undefined') {
+          skillPanel.send('请打开 ' + c.sheetPath + ' 给我看完整角色卡');
+        }
+        closeModal();
+      };
+      footer = btn;
+    }
+
+    openModal(c.name, subtitle, container, footer);
+  }
+
+  // === Companion modal ===
+  function renderCompanionModal(c) {
+    var sections = [];
+    if (c.description) {
+      sections.push(modalSection('描述', el('p', { class: 'modal-desc dim', text: c.description })));
+    }
+    if (c.combat) {
+      var cb = c.combat;
+      sections.push(modalSection('战斗数据', kvTable([
+        { k: 'HP', v: (cb.hp ? cb.hp.cur + ' / ' + cb.hp.max : '-') },
+        { k: 'AC', v: cb.ac },
+        { k: '速度', v: cb.speed },
+        { k: '先攻', v: cb.init },
+        { k: '体型', v: cb.size },
+        { k: '感官', v: cb.senses }
+      ])));
+    }
+    if (c.attacks && c.attacks.length) {
+      sections.push(modalSection('攻击 / 动作', bulletList(c.attacks.map(function (a) {
+        var meta = [];
+        if (a.hit) meta.push('命中 ' + a.hit);
+        if (a.damage) meta.push(a.damage);
+        if (a.uses) meta.push(a.uses);
+        if (a.type) meta.push(a.type);
+        return { name: a.name, desc: meta.join('，'), notes: a.notes };
+      }))));
+    }
+    if (c.immunities && c.immunities.length) {
+      sections.push(modalSection('免疫', tagRow(c.immunities)));
+    }
+    if (c.morphForms && c.morphForms.length) {
+      sections.push(modalSection('形态变换', bulletList(c.morphForms.map(function (f) {
+        return { name: (f.icon || '') + ' ' + f.name, desc: f.desc };
+      }))));
+    }
+    if (c.modules && c.modules.length) {
+      sections.push(modalSection('技能模块', bulletList(c.modules.map(function (m) {
+        return { name: m.name, desc: (m.type ? '[' + m.type + '] ' : '') + (m.range ? m.range + ' · ' : '') + m.desc };
+      }))));
+    }
+    if (c.tools && c.tools.length) {
+      sections.push(modalSection('束缚道具弹出', bulletList(c.tools.map(function (t) {
+        return { name: t.name, desc: t.desc, notes: '挣脱 ' + t.escape };
+      }))));
+    }
+    if (c.tacticalNotes && c.tacticalNotes.length) {
+      sections.push(modalSection('战术备注', bulletList(c.tacticalNotes)));
+    }
+    if (c.currentSituation) {
+      sections.push(modalSection('当前境况', el('p', { class: 'modal-desc', text: c.currentSituation })));
+    }
+    var container = el('div', null, sections);
+    var subtitle = (c.role || '') + (c.owner ? ' · ' + c.owner + ' 的同行' : '');
+    openModal(c.name, subtitle, container);
+  }
+
+  // 时段图标映射
+  var TOD_ICON = {
+    '晨': '🌅', '早': '🌅', '清晨': '🌅', '早晨': '🌅',
+    '午': '☀', '中午': '☀', '正午': '☀', '下午': '🌞',
+    '傍晚': '🌆', '黄昏': '🌆', '晚': '🌆', '日落': '🌆',
+    '夜': '🌙', '深夜': '🌙', '凌晨': '🌃', '午夜': '🌃'
+  };
+  // 天气图标映射
+  var WEATHER_ICON = {
+    '晴': '☀', '阴': '⛅', '多云': '⛅',
+    '雨': '🌧', '小雨': '🌧', '大雨': '🌧', '暴雨': '⛈',
+    '雷': '⛈', '雷雨': '⛈',
+    '雪': '❄', '小雪': '❄', '大雪': '🌨',
+    '雾': '🌫', '风': '💨', '大风': '💨'
+  };
+  // 同行 NPC 类型图标
+  var COMPANION_ICON = {
+    'lover': '💕', 'partner': '💕', 'spouse': '💕',
+    'pet': '🐾', 'familiar': '🐾',
+    'mercenary': '⚔', 'hireling': '⚔',
+    'summon': '✨', 'wildshape': '🐺', 'steeldefender': '🤖',
+    'ally': '🤝', 'follower': '👤',
+    'prisoner': '⛓', 'captive': '⛓', 'thrall': '🔒',
+    'default': '·'
+  };
+  function companionIcon(type) {
+    return COMPANION_ICON[type] || COMPANION_ICON['default'];
+  }
+  function todIcon(t) { return TOD_ICON[t] || '◴'; }
+  function weatherIcon(w) {
+    if (!w) return '';
+    for (var k in WEATHER_ICON) if (w.indexOf(k) !== -1) return WEATHER_ICON[k];
+    return '';
+  }
+
+  // 兼容 status：可能是 string 或 {name, type?, duration?}
+  function normalizeChip(s) {
+    if (typeof s === 'string') {
+      var type = 'default';
+      if (s.indexOf('专注') === 0 || s.indexOf('⊙') === 0) type = 'conc';
+      return { name: s, type: type };
+    }
+    return s || {};
+  }
+
+  // === Section renderers ===
+  function renderHeader(data) {
+    var modeText = { G: '带团', I: '沙盒', idle: '未开桌' }[data.mode] || data.mode;
+    var c = data.campaign || {};
+
+    // Row 1: mode badge + campaign name（两者独占一行，name 不会被 dm-style 挤换行）
+    var modeRow = el('div', { class: 'mode-row' }, [
+      el('span', { class: 'mode-badge ' + data.mode, text: modeText }),
+      el('span', { class: 'campaign-name',
+        text: c.name ? c.name : '(未选择战役)' })
+    ]);
+
+    // Row 2: dm style 单行（满行 + ellipsis）
+    var dmStyleRow = c.dmStyle
+      ? el('div', { class: 'dm-style', text: c.dmStyle })
+      : null;
+
+    // Row 3: env pills + location
+    var envChildren = [];
+    if (c.inGameTime) {
+      envChildren.push(el('span', { class: 'env-pill env-time' }, [
+        el('span', { class: 'icon', text: '📜' }),
+        document.createTextNode(c.inGameTime)
+      ]));
+    }
+    if (c.timeOfDay) {
+      envChildren.push(el('span', { class: 'env-pill env-time' }, [
+        el('span', { class: 'icon', text: todIcon(c.timeOfDay) }),
+        document.createTextNode(c.timeOfDay)
+      ]));
+    }
+    if (c.weather) {
+      var wIcon = weatherIcon(c.weather);
+      envChildren.push(el('span', { class: 'env-pill env-weather' }, [
+        wIcon ? el('span', { class: 'icon', text: wIcon }) : null,
+        document.createTextNode(c.weather)
+      ].filter(Boolean)));
+    }
+    if (c.location) {
+      envChildren.push(el('span', { class: 'env-loc', text: '📍 ' + c.location }));
+    }
+    var envRow = envChildren.length ? el('div', { class: 'env-row' }, envChildren) : null;
+
+    return el('div', { class: 'card header' }, [modeRow, dmStyleRow, envRow]);
+  }
+
+  function renderPlayer(p) {
+    var ratio = p.hpMax > 0 ? p.hpCur / p.hpMax : 0;
+    var barClass = ratio < 0.25 ? 'bar bad' : ratio < 0.5 ? 'bar warn' : 'bar';
+    var fill = el('div', { class: 'fill' });
+    fill.style.width = Math.max(0, Math.min(100, ratio * 100)) + '%';
+
+    var nameSpan = el('span', { class: 'clickable', title: '点击查看玩家详情' }, [
+      el('span', { class: 'player-name', text: p.name }),
+      el('span', { class: 'player-class', text: p.class || '' })
+    ]);
+    nameSpan.onclick = function () { showCharacter(p.name); };
+    var top = el('div', { class: 'top' }, [
+      nameSpan,
+      el('span', { class: 'player-ac', text: 'AC ' + (p.ac != null ? p.ac : '?') })
+    ]);
+
+    var hpBar = el('div', { class: barClass }, [fill]);
+    var hpLabel = el('div', { class: 'bar-label' }, [
+      el('span', { class: 'lhs', text: '❤ HP' }),
+      el('span', { class: 'rhs', text: p.hpCur + ' / ' + p.hpMax })
+    ]);
+
+    var parts = [top, hpBar, hpLabel];
+
+    // XP 条（如果有）
+    if (p.xp && p.xp.next > 0) {
+      var xpRatio = p.xp.cur / p.xp.next;
+      var xpFill = el('div', { class: 'fill' });
+      xpFill.style.width = Math.max(0, Math.min(100, xpRatio * 100)) + '%';
+      var xpBar = el('div', { class: 'bar xp-bar' }, [xpFill]);
+      var lvlText = p.xp.level != null ? ('Lv ' + p.xp.level) : 'EXP';
+      var xpLabel = el('div', { class: 'bar-label xp-label' }, [
+        el('span', { class: 'lhs', text: '✦ ' + lvlText }),
+        el('span', { class: 'rhs', text: p.xp.cur + ' / ' + p.xp.next })
+      ]);
+      parts.push(xpBar, xpLabel);
+    }
+
+    // 状态/持续效果
+    var chips = (p.status || []).map(function (s) {
+      var n = normalizeChip(s);
+      var classes = 'chip ' + (n.type || 'default');
+      var content = [document.createTextNode(n.name || '')];
+      if (n.duration) content.push(el('span', { class: 'dur', text: '(' + n.duration + ')' }));
+      return el('span', { class: classes }, content);
+    });
+    if (chips.length) parts.push(el('div', { class: 'chips' }, chips));
+
+    return el('div', { class: 'player-row' }, parts);
+  }
+
+  function renderPlayers(players) {
+    if (!players || !players.length) {
+      return el('div', { class: 'card' }, [
+        el('div', { class: 'card-title' }, [document.createTextNode('⚔ 队伍阵容')]),
+        el('div', { class: 'empty', text: '(尚无玩家)' })
+      ]);
+    }
+    return el('div', { class: 'card' }, [
+      el('div', { class: 'card-title' }, [document.createTextNode('⚔ 队伍阵容')])
+    ].concat(players.map(renderPlayer)));
+  }
+
+  function renderModule(mod) {
+    if (!mod) return null;
+    var lines = [
+      el('div', { class: 'module-line', html: '<strong>模组：</strong>' + (mod.name || '?') }),
+      el('div', { class: 'module-line', html: '<strong>当前章节：</strong>' + (mod.currentChapter || '-') }),
+      el('div', { class: 'module-line', html: '<strong>进度：</strong>' + (mod.progress || '-') })
+    ];
+    return el('div', { class: 'card' }, [
+      el('div', { class: 'card-title' }, [document.createTextNode('📖 模组进度')])
+    ].concat(lines));
+  }
+
+  function renderCombat(c) {
+    if (!c) return null;
+    var head = el('div', { class: 'combat-meta' }, [
+      el('span', { class: 'round', text: '◆ 第 ' + (c.round || '?') + ' 回合' }),
+      document.createTextNode(' · 当前出手：' + (c.currentActor || '?'))
+    ]);
+    var thead = el('thead', null, [el('tr', null, [
+      el('th', { text: '名字' }),
+      el('th', { text: '先攻' }),
+      el('th', { text: 'HP' })
+    ])]);
+    var rows = (c.initiative || []).map(function (e, i) {
+      var isCur = e.isCurrent || i === c.turnIndex;
+      var hpCell;
+      if (e.isPC) {
+        hpCell = el('td', { text: e.hp || '-' });
+      } else {
+        hpCell = el('td', null, [el('span', { class: 'hp-fuzzy', text: e.hp || '-' })]);
+      }
+      return el('tr', { class: isCur ? 'current' : '' }, [
+        el('td', { class: e.isPC ? 'pc' : 'npc', text: e.name }),
+        el('td', { text: e.init != null ? String(e.init) : '-' }),
+        hpCell
+      ]);
+    });
+    var table = el('table', { class: 'init-table' }, [thead, el('tbody', null, rows)]);
+    return el('div', { class: 'card' }, [
+      el('div', { class: 'card-title' }, [document.createTextNode('⚔ 战斗进行中')]),
+      head, table
+    ]);
+  }
+
+  function renderCompanions(comps) {
+    if (!comps || !comps.length) return null;
+    var rows = comps.map(function (c) {
+      var children = [
+        el('span', { class: 'ctype', text: companionIcon(c.type) }),
+        el('span', { class: 'cname', text: c.name + (c.role ? ' · ' + c.role : '') })
+      ];
+      if (c.hp) children.push(el('span', { class: 'chp', text: c.hp }));
+      var row = el('div', { class: 'companion-row clickable', title: '点击查看详情' }, children);
+      row.onclick = function () { showCompanion(c.name); };
+      return row;
+    });
+    return el('div', { class: 'sb-group' }, [
+      el('div', { class: 'sb-group-title' }, [
+        el('span', { class: 'icon', text: '👥' }),
+        document.createTextNode('同行')
+      ])
+    ].concat(rows));
+  }
+
+  function renderSandbox(s) {
+    if (!s) return null;
+    var groups = [];
+
+    if (s.companions && s.companions.length) {
+      groups.push(renderCompanions(s.companions));
+    }
+
+    if (s.activeCommissions && s.activeCommissions.length) {
+      var commRows = s.activeCommissions.map(function (c, i) {
+        return el('div', { class: 'sb-row' + (i === 0 ? ' first' : '') }, [
+          el('span', { text: c.name }),
+          el('span', { class: 'sb-meta', text: c.deadline || '' })
+        ]);
+      });
+      groups.push(el('div', { class: 'sb-group' }, [
+        el('div', { class: 'sb-group-title' }, [
+          el('span', { class: 'icon', text: '📜' }),
+          document.createTextNode('进行中委托')
+        ])
+      ].concat(commRows)));
+    }
+
+    if (s.keyRelationships && s.keyRelationships.length) {
+      var relRows = s.keyRelationships.map(function (r, i) {
+        var row = el('div', { class: 'sb-row clickable' + (i === 0 ? ' first' : ''), title: '点击查看 NPC 详情' }, [
+          el('span', { text: r.name + (r.stage ? ' · ' + r.stage : '') }),
+          el('span', { class: 'sb-meta', text: r.lastSeen || '' })
+        ]);
+        row.onclick = function () { showNpc(r.name); };
+        return row;
+      });
+      groups.push(el('div', { class: 'sb-group' }, [
+        el('div', { class: 'sb-group-title' }, [
+          el('span', { class: 'icon', text: '❀' }),
+          document.createTextNode('关键关系')
+        ])
+      ].concat(relRows)));
+    }
+
+    if (s.assetsBrief) {
+      // 支持字符串 OR 数组（多行）
+      var assetRows;
+      if (Array.isArray(s.assetsBrief)) {
+        assetRows = s.assetsBrief.map(function (line, i) {
+          return el('div', { class: 'sb-row' + (i === 0 ? ' first' : ''),
+            text: typeof line === 'string' ? line : (line.label + ': ' + line.value) });
+        });
+      } else {
+        assetRows = [el('div', { class: 'sb-row first', text: s.assetsBrief })];
+      }
+      groups.push(el('div', { class: 'sb-group' }, [
+        el('div', { class: 'sb-group-title' }, [
+          el('span', { class: 'icon', text: '💰' }),
+          document.createTextNode('资产')
+        ])
+      ].concat(assetRows)));
+    }
+
+    if (!groups.length) return null;
+
+    return el('div', { class: 'card' }, [
+      el('div', { class: 'card-title' }, [document.createTextNode('🏞 沙盒状态')])
+    ].concat(groups));
+  }
+
+  function renderSaves(saves) {
+    if (!saves || !saves.length) return null;
+    var rows = saves.map(function (s, i) {
+      var chapterLoc = [s.chapter, s.location].filter(Boolean).join('  ·  ');
+      var info = el('div', { class: 'save-info' }, [
+        el('span', { class: 'save-name', text: s.name }),
+        chapterLoc ? el('span', { class: 'save-chapter', text: chapterLoc }) : null
+      ].filter(Boolean));
+      var timeEl = s.createdAt ? el('span', { class: 'save-time', text: s.createdAt }) : null;
+      var loadBtn = el('button', { class: 'btn-sm', text: '读档' });
+      loadBtn.onclick = (function (name) {
+        return function () {
+          if (typeof skillPanel !== 'undefined') skillPanel.send('/load ' + name);
+        };
+      })(s.name);
+      return el('div', { class: 'save-row' }, [info, timeEl, loadBtn].filter(Boolean));
+    });
+    return el('div', { class: 'card' }, [
+      el('div', { class: 'card-title' }, [document.createTextNode('💾 存档点')])
+    ].concat(rows));
+  }
+
+  function renderNoCampaignsHint() {
+    return el('div', { class: 'card' }, [
+      el('div', { class: 'empty', html:
+        '✦ 尚无战役存档 ✦<br><br>' +
+        '跟 AI 说<strong>「开桌跑 XX 模组」</strong><br>进入带团模式 (G)<br>' +
+        '或<strong>「开沙盒」</strong>进入沙盒模式 (I)<br>' +
+        '<br>开桌后此面板将自动显示战役状态' })
+    ]);
+  }
+
+  function renderCampaignCard(c) {
+    var header = el('div', { class: 'campaign-card-header' }, [
+      el('span', { class: 'campaign-card-name', text: c.name }),
+      c.lastPlayed ? el('span', { class: 'campaign-card-last', text: '上次：' + c.lastPlayed }) : null
+    ].filter(Boolean));
+
+    var meta = [c.dmStyle, c.module].filter(Boolean).join('  ·  ');
+    var styleRow = meta ? el('div', { class: 'campaign-card-style', text: meta }) : null;
+
+    var saveRows;
+    if (c.saves && c.saves.length) {
+      saveRows = c.saves.map(function (s) {
+        var chapterLoc = [s.chapter, s.location].filter(Boolean).join('  ·  ');
+        var info = el('div', { class: 'campaign-save-info' }, [
+          el('div', { class: 'campaign-save-name', text: s.name }),
+          chapterLoc ? el('div', { class: 'campaign-save-chapter', text: chapterLoc }) : null
+        ].filter(Boolean));
+        var timeEl = s.createdAt ? el('span', { class: 'campaign-save-time', text: s.createdAt }) : null;
+        var btn = el('button', { class: 'btn-sm', text: '继续' });
+        btn.onclick = (function (cn, sn) {
+          return function () {
+            if (typeof skillPanel !== 'undefined') skillPanel.send('/load ' + cn + '/' + sn);
+          };
+        })(c.name, s.name);
+        return el('div', { class: 'campaign-save-row' }, [info, timeEl, btn].filter(Boolean));
+      });
+    } else {
+      saveRows = [el('div', { class: 'campaign-no-saves', text: '暂无存档' })];
+    }
+
+    var children = [header];
+    if (styleRow) children.push(styleRow);
+    saveRows.forEach(function (r) { children.push(r); });
+    return el('div', { class: 'campaign-card' }, children);
+  }
+
+  function renderIdleHint() {
+    var wrapper = el('div', null, []);
+    var data = allSavesData;
+    if (!data || !data.campaigns || !data.campaigns.length) {
+      wrapper.appendChild(renderNoCampaignsHint());
+    } else {
+      wrapper.appendChild(el('div', { class: 'card-title', text: '⚔ 选择战役' }));
+      data.campaigns.slice().reverse().forEach(function (c) {
+        wrapper.appendChild(renderCampaignCard(c));
+      });
+    }
+    return wrapper;
+  }
+
+  // 尝试通过 skillPanel.send 发送消息；若不支持则弹出复制框作为 fallback
+  function trySend(msg) {
+    try {
+      if (typeof skillPanel !== 'undefined' && typeof skillPanel.send === 'function') {
+        skillPanel.send(msg);
+      } else {
+        showSendFallback(msg);
+      }
+    } catch (e) {
+      showSendFallback(msg);
+    }
+  }
+
+  // Fallback：弹出一个小提示框，用户可以复制文字手动发送
+  function showSendFallback(msg) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-card,#1e1e2e);border:1px solid var(--border,#333);border-radius:8px;padding:16px;max-width:320px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+    box.innerHTML = '<div style="font-size:12px;color:var(--text-mute,#888);margin-bottom:8px">复制下方内容发送给 AI：</div>' +
+      '<textarea readonly style="width:100%;box-sizing:border-box;background:var(--bg-deep,#111);border:1px solid var(--border,#333);color:var(--text,#ddd);border-radius:4px;padding:8px;font-size:13px;min-height:60px;resize:vertical">' +
+      msg.replace(/</g,'&lt;') + '</textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+      '<button id="sp-copy-btn" style="flex:1;padding:6px;background:var(--gold,#c9a84c);color:#111;border:none;border-radius:4px;cursor:pointer;font-size:12px">📋 复制</button>' +
+      '<button id="sp-close-btn" style="flex:1;padding:6px;background:var(--bg-hi,#2a2a3e);color:var(--text,#ddd);border:1px solid var(--border,#333);border-radius:4px;cursor:pointer;font-size:12px">关闭</button>' +
+      '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    var ta = box.querySelector('textarea');
+    ta.select();
+    box.querySelector('#sp-copy-btn').onclick = function () {
+      try { navigator.clipboard.writeText(msg); } catch(e) { document.execCommand('copy'); }
+      this.textContent = '✅ 已复制';
+    };
+    box.querySelector('#sp-close-btn').onclick = function () { document.body.removeChild(overlay); };
+    overlay.onclick = function (e) { if (e.target === overlay) document.body.removeChild(overlay); };
+  }
+
+  function renderActions(mode) {
+    var box = el('div', { class: 'actions' }, [el('h4', { text: '▾ 快捷操作' })]);
+    function mkBtn(text, msg) {
+      var b = el('button', { class: 'btn', text: text });
+      b.onclick = function () {
+        trySend(msg);
+        // 视觉反馈：短暂变成"✓"再还原，让用户知道已触发
+        var orig = b.textContent;
+        b.textContent = '✓ 已发送';
+        b.disabled = true;
+        b.style.opacity = '0.7';
+        setTimeout(function () {
+          b.textContent = orig;
+          b.disabled = false;
+          b.style.opacity = '';
+        }, 1500);
+      };
+      return b;
+    }
+    if (mode === 'G' || mode === 'I') {
+      box.appendChild(el('div', { class: 'btn-row' }, [
+        mkBtn('🛌 短休', '我们短休一下'),
+        mkBtn('🌙 长休', '我们长休一晚')
+      ]));
+      var saveBtn = el('button', { class: 'btn', text: '💾 新建存档' });
+      saveBtn.onclick = function () {
+        var name = prompt('存档名称（例：第一章开头、BOSS战前）：', '');
+        if (name && name.trim()) {
+          trySend('/save ' + name.trim());
+        }
+      };
+      box.appendChild(saveBtn);
+    }
+    if (mode === 'G') {
+      box.appendChild(mkBtn('📜 查 NPC 速查', '请 Read 当前模组的 NPC速查.md 给我看玩家视角的 NPC 信息（不要剧透 🔒 部分）'));
+      box.appendChild(mkBtn('🗺 查地点速查', '请 Read 当前模组的 地点速查.md，给我看当前所在区域的描述'));
+    }
+    if (mode === 'I') {
+      box.appendChild(mkBtn('⏱ 时间推进 1 周', '我们时间推进 1 周，按 I3 协议结算'));
+      box.appendChild(mkBtn('💼 查公会委托', '我去公会看委托池'));
+    }
+    if (mode === 'idle') {
+      // 可展开模组目录
+      var moduleList = el('div', { style: 'display:none;margin-top:2px;border:1px solid var(--border);background:var(--bg-deep);padding:0 10px' });
+      var toggled = false;
+      var toggleBtn = el('button', { class: 'btn', text: '▶ 开桌带团' });
+      toggleBtn.onclick = function () {
+        toggled = !toggled;
+        toggleBtn.textContent = (toggled ? '▾ ' : '▶ ') + '开桌带团';
+        moduleList.style.display = toggled ? '' : 'none';
+        if (toggled && !moduleList._loaded) {
+          moduleList._loaded = true;
+          var data = modulesIndexData;
+          moduleList.innerHTML = '';
+            if (!data || !data.modules || !data.modules.length) {
+              moduleList.appendChild(el('div', { style: 'padding:7px 0;font-size:12px;color:var(--text-dim)', text: '暂无模组数据' }));
+              return;
+            }
+            data.modules.forEach(function (m, i) {
+              // label: 变体用 ↳ variant；否则取 __ 前段作显示名
+              var baseName = m.name.indexOf('__') >= 0 ? m.name.split('__')[0] : m.name;
+              var label = m.variant ? ('↳ ' + m.variant) : baseName;
+              var metaParts = [];
+              if (m.levels) metaParts.push(m.levels + ' 级');
+              if (m.variant) metaParts.push('变体副本');
+              else if (m.desc) metaParts.push(m.desc);
+              var meta = metaParts.join(' · ');
+              var nameSpan = el('span', { style: 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);' + (m.variant ? 'padding-left:10px;color:var(--text-dim)' : 'font-weight:600'), text: label });
+              var metaSpan = meta ? el('span', { style: 'font-size:11px;color:var(--text-mute);white-space:nowrap;flex-shrink:0', text: meta }) : null;
+              var startBtn = el('button', { class: 'btn-sm', text: '开桌' });
+              startBtn.onclick = (function (mn) {
+                return function () { if (typeof skillPanel !== 'undefined') skillPanel.send('带我跑「' + mn + '」模组'); };
+              })(m.name);
+              var row = el('div', {
+                style: 'display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;' + (i > 0 ? 'border-top:1px solid var(--border)' : '')
+              }, [nameSpan, metaSpan, startBtn].filter(Boolean));
+              moduleList.appendChild(row);
+            });
+        }
+      };
+      box.appendChild(toggleBtn);
+      box.appendChild(moduleList);
+      box.appendChild(mkBtn('🏞 开沙盒', '我们开沙盒模式'));
+    }
+    return box;
+  }
+
+  // === Top-level render ===
+  function render(data) {
+    currentData = data;  // modal 需要读 campaign.name
+    var root = document.getElementById('root');
+    root.innerHTML = '';
+
+    root.appendChild(renderHeader(data));
+
+    if (data.mode !== 'idle') {
+      root.appendChild(renderPlayers(data.players || []));
+    }
+
+    if (data.mode === 'G') {
+      if (data.combat) {
+        root.appendChild(renderCombat(data.combat));
+      } else {
+        var modSection = renderModule(data.module);
+        if (modSection) root.appendChild(modSection);
+      }
+    } else if (data.mode === 'I') {
+      var sbSection = renderSandbox(data.sandbox);
+      if (sbSection) root.appendChild(sbSection);
+    } else {
+      root.appendChild(renderIdleHint());
+    }
+
+    if (data.saves && data.saves.length) {
+      var savesSection = renderSaves(data.saves);
+      if (savesSection) root.appendChild(savesSection);
+    }
+
+    if (data.lastUpdate) {
+      root.appendChild(el('div', { class: 'last-update',
+        text: '◴ 最后更新：' + fmtTime(data.lastUpdate) }));
+    }
+
+    root.appendChild(renderActions(data.mode));
+  }
+
+  // === 深投影：canonical 富 schema → 弹窗用的 character-v1 形状 ===
+  // 规则见 CHARACTER_SCHEMA.md §4（公式唯一真源）。对已是 character-v1 的旧数据幂等原样返回（兼容懒迁移）。
+  var richToV1 = (function () {
+    var SKILLS = { acrobatics: ['特技','dex'], animalHandling: ['驯兽','wis'], arcana: ['奥秘','int'],
+      athletics: ['运动','str'], deception: ['欺瞒','cha'], history: ['历史','int'], insight: ['洞悉','wis'],
+      intimidation: ['威吓','cha'], investigation: ['调查','int'], medicine: ['医疗','wis'], nature: ['自然','int'],
+      perception: ['察觉','wis'], performance: ['表演','cha'], persuasion: ['游说','cha'], religion: ['宗教','int'],
+      sleightOfHand: ['巧手','dex'], stealth: ['隐匿','dex'], survival: ['生存','wis'] };
+    var ABBR = { str:'力', dex:'敏', con:'体', int:'智', wis:'感', cha:'魅' };
+    var RESET = { shortRest:'短休', longRest:'长休', day:'每日', daily:'每日', perBattle:'每场战斗' };
+    function md(s) { return Math.floor(((s || 10) - 10) / 2); }
+    function sg(n) { return (n >= 0 ? '+' : '') + n; }
+    function isRich(o) { return o && o.meta && o.combat && o.combat.hpCur != null && o.abilities; }
+    return function (rich) {
+      if (!isRich(rich)) return rich;   // 非富 schema（含旧 character-v1）原样返回 → 幂等
+      var lvl = (rich.meta.classes || []).reduce(function (s, c) { return s + (c.level || 0); }, 0);
+      var pb = Math.ceil(lvl / 4) + 1;
+      var ab = rich.abilities, mods = {};
+      Object.keys(ABBR).forEach(function (k) { mods[k] = md(ab[k] && ab[k].score); });
+      var outAb = {};
+      Object.keys(ABBR).forEach(function (k) {
+        var a = ab[k] || {};
+        outAb[k] = { score: a.score, mod: sg(mods[k]), save: sg(mods[k] + (a.saveProf ? pb : 0) + (a.saveBonus || 0)), proficient: !!a.saveProf };
+      });
+      var sk = rich.skills || {}, gB = sk.globalBonus || 0, outSkills = [];
+      Object.keys(SKILLS).forEach(function (id) {
+        var s = sk[id]; if (!s || !s.prof || s.prof === 'none') return;
+        var mult = (s.prof === 'expertise' || s.prof === 'expert') ? 2 : (s.prof === 'prof' ? 1 : 0), abi = SKILLS[id][1];
+        outSkills.push({ name: SKILLS[id][0] + (mult === 2 ? '（专精）' : ''), ability: ABBR[abi], bonus: sg(mods[abi] + mult * pb + gB + (s.bonus || 0)), proficient: true });
+      });
+      var cb = rich.combat, acB = (cb.acBase || 0) + (cb.acBonus || 0);
+      var shAc = (rich.equipment && rich.equipment.shield && rich.equipment.shield.equipped) ? (rich.equipment.shield.ac || 0) : 0;
+      var pPerc = (function () { var s = sk.perception; if (!s || !s.prof) return mods.wis; var m = (s.prof === 'expertise') ? 2 : 1; return mods.wis + m * pb + gB + (s.bonus || 0); })();
+      var combat = { hp: { cur: cb.hpCur, max: cb.hpMax },
+        ac: { base: acB + shAc, withShield: shAc ? acB + shAc : 0, armor: (rich.equipment && rich.equipment.armor && rich.equipment.armor.name) || '' },
+        speed: (cb.speed != null ? cb.speed + ' ft' : '-'), init: sg(mods.dex + (cb.initBonus || 0)),
+        passivePerc: 10 + pPerc, profBonus: sg(pb), senses: cb.senses || '' };
+      var outAtk = (rich.attacks || []).map(function (a) {
+        var hit = mods[a.ability] + pb + (a.attackBonus || 0);
+        var df = a.damageBonus ? (a.damageBonus > 0 ? '+' + a.damageBonus : '' + a.damageBonus) : '';
+        return { name: a.name, hit: sg(hit), damage: a.damage + df + (a.damageType ? ' ' + a.damageType : ''), notes: a.properties || '' };
+      });
+      var outRes = (rich.classResources || []).map(function (r) {
+        var u = (r.used || []).filter(Boolean).length;
+        return { name: r.label, cur: (r.max || 0) - u, max: r.max || 0, reset: RESET[r.resetType] || r.resetType || '' };
+      });
+      var spells = null, spc = rich.spellcasting;
+      if (spc && spc.castingAbility) {
+        var hasSlot = Object.keys(spc.slots || {}).some(function (L) { return (spc.slots[L].max || 0) > 0; });
+        if (hasSlot || (spc.cantrips || []).length) {
+          var cm = mods[spc.castingAbility] || 0;
+          spells = { casterAbility: ABBR[spc.castingAbility] || spc.castingAbility, spellAttack: sg(pb + cm + (spc.extraAttackBonus || 0)),
+            spellSaveDC: 8 + pb + cm + (spc.extraDcBonus || 0), cantripsKnown: (spc.cantrips || []).map(function (c) { return c.name; }),
+            level1Prepared: (spc.spells || []).filter(function (s) { return s.lvl === 1; }).map(function (s) { return s.name; }) };
+        }
+      }
+      var eq = rich.equipment || {};
+      var equipment = { weapons: (rich.attacks || []).map(function (a) { return a.name; }),
+        armor: [eq.armor && eq.armor.name, eq.shield && eq.shield.name].filter(Boolean),
+        tools: (eq.items || []).filter(function (i) { return i.category === 'tool'; }).map(function (i) { return i.name + (i.qty > 1 ? ' ×' + i.qty : ''); }),
+        other: (eq.items || []).filter(function (i) { return i.category !== 'tool'; }).map(function (i) { return i.name + (i.qty > 1 ? ' ×' + i.qty : ''); }) };
+      var w = rich.wealth || {}, coins = [];
+      ['pp','gp','ep','sp','cp'].forEach(function (c) { if (w[c]) coins.push(w[c] + ' ' + c.toUpperCase()); });
+      var wealth = { cash: coins.join(' / ') || '-', property: w.property || '', goods: w.goods || '' };
+      var classSummary = (rich.meta.classes || []).map(function (c) { return c.name + ' ' + c.level + (c.subclass ? '（' + c.subclass + '）' : ''); }).join(' / ');
+      return { _schema: 'character-v1', _projected: true, name: rich.meta.name,
+        race: rich.meta.race ? (rich.meta.race.name + (rich.meta.race.subrace ? '（' + rich.meta.race.subrace + '）' : '')) : '',
+        alignment: rich.meta.alignment, background: rich.meta.background, classSummary: classSummary, classes: rich.meta.classes,
+        appearance: rich.meta.appearance || '', combat: combat, abilities: outAb, skills: outSkills, attacks: outAtk,
+        resources: outRes, spells: spells, keyFeatures: (rich.features || []).map(function (f) { return { name: f.name, source: f.source, desc: f.desc }; }),
+        equipment: equipment, wealth: wealth, sheetPath: (rich.meta && rich.meta.sheetPath) || rich.sheetPath || '' };
+    };
+  })();
+
+  // === HUD 派生（方案A）：队伍行的 HP/AC/职业/状态/经验从 canonical 角色派生 ===
+  // session.json 不再存 players[] 血量；HP 等唯一真源在 canonical 角色 JSON。规则见 CHARACTER_SCHEMA.md §4。
+  var XP_NEXT = { 1:300, 2:900, 3:2700, 4:6500, 5:14000, 6:23000, 7:34000, 8:48000, 9:64000, 10:85000,
+    11:100000, 12:120000, 13:140000, 14:165000, 15:195000, 16:225000, 17:265000, 18:305000, 19:355000, 20:0 };
+  function hudStatus(cb) {
+    if (!cb) return [];
+    var out = [];
+    (cb.statusEffects || []).forEach(function (s) { if (s) out.push(s); });   // 字符串条件
+    if (cb.concentration && cb.concentration.spellName) out.push({ name: '专注:' + cb.concentration.spellName, type: 'conc' });
+    (cb.buffs || []).forEach(function (b) { if (b && b.name) out.push({ name: b.name, type: b.conc ? 'conc' : 'buff' }); });
+    return out;
+  }
+  function hudFromCanonical(c) {
+    if (!c || !c.combat) return null;
+    // canonical 富 schema（combat.hpCur）：完整派生
+    if (c.combat.hpCur != null && c.meta) {
+      var lvl = (c.meta.classes || []).reduce(function (s, x) { return s + (x.level || 0); }, 0);
+      var acBase = (c.combat.acBase || 0) + (c.combat.acBonus || 0);
+      var sh = (c.equipment && c.equipment.shield && c.equipment.shield.equipped) ? (c.equipment.shield.ac || 0) : 0;
+      return {
+        name: c.meta.name,
+        class: (c.meta.classes || []).map(function (x) { return x.name + ' ' + x.level; }).join(' / '),
+        hpCur: c.combat.hpCur, hpMax: c.combat.hpMax, ac: acBase + sh,
+        xp: (c.meta.xp != null && XP_NEXT[lvl]) ? { cur: c.meta.xp, next: XP_NEXT[lvl], level: lvl } : null,
+        status: hudStatus(c.combat)
+      };
+    }
+    // 旧 character-v1（combat.hp.cur）兜底：未迁移战役也能派生 HUD（HP/AC/职业）。
+    // v1 无 live 状态/经验字段 → status/xp 留空，由 ingest 从 session 同名角色并入。
+    if (c.combat.hp && c.combat.hp.cur != null) {
+      var ac1 = c.combat.ac;
+      return {
+        name: c.name || (c.meta && c.meta.name) || '?',
+        class: c.classSummary || (c.classes || []).map(function (x) { return x.name + ' ' + (x.level || ''); }).join(' / '),
+        hpCur: c.combat.hp.cur, hpMax: c.combat.hp.max,
+        ac: ac1 == null ? null : (typeof ac1 === 'object' ? ac1.base : ac1),
+        xp: null, status: []
+      };
+    }
+    return null;
+  }
+
+  // 从 v2 推送 payload.sources 装配数据并渲染
+  function ingest(payload) {
+    var sources = (payload && payload.sources) || {};
+
+    // 1) 战役实体索引（弹窗用）：campaignFiles 是 collection，
+    //    entry.path 形如 campaigns/<战役名>/<characters|npcs|companions>/<名>.json
+    campaignIndex = {};
+    var cf = sources.campaignFiles && sources.campaignFiles.entries;
+    if (Array.isArray(cf)) {
+      cf.forEach(function (e) {
+        var parts = (e.path || '').split(/[\/\\]/).filter(Boolean);
+        if (parts.length < 4 || parts[0] !== 'campaigns') return;
+        var camp = normCampaign(parts[1]);
+        var type = parts[parts.length - 2];                 // characters | npcs | companions
+        var name = parts[parts.length - 1].replace(/\.json$/i, '');
+        var obj = e.parsed;
+        if (!obj && e.content) { try { obj = JSON.parse(e.content); } catch (x) { obj = null; } }
+        if (!obj) return;
+        if (!campaignIndex[camp]) campaignIndex[camp] = {};
+        if (!campaignIndex[camp][type]) campaignIndex[camp][type] = {};
+        // 存原始 canonical：弹窗 open 时再 richToV1 投影、HUD 也从原始派生；companions/npcs 原样。
+        campaignIndex[camp][type][name] = obj;
+      });
+    }
+
+    // 2) 索引 source：all-saves / modules-index
+    allSavesData = (sources.allSaves && sources.allSaves.kind === 'json') ? sources.allSaves.data : null;
+    modulesIndexData = (sources.modulesIndex && sources.modulesIndex.kind === 'json') ? sources.modulesIndex.data : null;
+
+    // 3) 会话态 session.json
+    var data = (sources.session && sources.session.kind === 'json') ? sources.session.data : null;
+    if (!data) { render({ mode: 'idle', players: [], lastUpdate: null }); return; }
+    if (!data.mode) data.mode = 'idle';
+
+    // 4) 存档列表由 all-saves 按当前战役派生（替代 v1 的 session.saves[]）
+    data.saves = deriveSaves(data, allSavesData);
+
+    // HUD 队伍行（方案A）：当前战役有 canonical 富 schema 角色时，从中派生 HP/AC/状态/经验，
+    // 作为唯一真源覆盖 session；无富 schema（未迁移战役）则保留 session.players（兼容回退）。
+    if (data.campaign && data.campaign.name) {
+      var hudCamp = campaignIndex[normCampaign(data.campaign.name)];
+      var hudChars = hudCamp && hudCamp.characters;
+      if (hudChars) {
+        var derived = Object.keys(hudChars).map(function (nm) { return hudFromCanonical(hudChars[nm]); }).filter(Boolean);
+        if (derived.length) {
+          // HP/AC/职业 以角色 json 为准（单一真源）。派生出的 status/xp 若为空（旧 v1 无这些字段），
+          // 从 session 里同名角色并入 —— 既修读档空 HUD，又不丢进行中旧 session 的状态/经验。
+          var sessBy = {};
+          (data.players || []).forEach(function (p) { if (p && p.name) sessBy[p.name] = p; });
+          derived.forEach(function (p) {
+            var sp = sessBy[p.name];
+            if ((!p.status || !p.status.length) && sp && sp.status && sp.status.length) p.status = sp.status;
+            if (p.xp == null && sp && sp.xp) p.xp = sp.xp;
+          });
+          data.players = derived;
+        }
+      }
+    }
+    if (!data.players) data.players = [];
+
+    render(data);
+  }
+
+  // === Data wiring ===
+  if (typeof skillPanel !== 'undefined') {
+    skillPanel.onData(ingest);
+    skillPanel.ready();
+  } else if (window.__PANEL_SOURCES__) {
+    // 预览模式（v2）：window.__PANEL_SOURCES__ = { session, campaignFiles, allSaves, modulesIndex }
+    ingest({ sources: window.__PANEL_SOURCES__ });
+  } else if (window.__PANEL_PREVIEW__) {
+    // 旧预览模式：直接挂一份组装好的 data
+    var d = window.__PANEL_PREVIEW__;
+    if (d && !d.mode) d.mode = 'idle';
+    render(d);
+  }
+</script>
+</body>
+</html>
