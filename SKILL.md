@@ -327,7 +327,7 @@ spell --class 法师 --level 2   # 枚举 → 默认 PHB14 印次（--all 看全
 monster 哥布林                # 怪物 statblock 摘要（哥布林→地精 别名自动归一）+ path:line
 magic 雷神之锤                # 魔法物品 → 类型·稀有度·调谐 + path:line
 ```
-- 覆盖：法术 1179、怪物 738+85族、魔法物品 331（同份不全书资料，与 dnd5r 同数据、仅优先级翻转）。
+- 覆盖：法术 1179、怪物 1164+85族（含 2014《怪物图鉴》426 只正文 statblock 解析，PHB14 优先·主显）、魔法物品 331（同份不全书资料，与 dnd5r 同数据、仅优先级翻转）。
 - **职业/子职已接入**（`class` / `subclass --class <职业>`）：**PHB14 基准**（玩家手册/职业 子目录）+ PHB24/塔莎/珊娜萨/奇械师/铳士/血猎手/第三方 追加，共 **15 职业 + 207 子职**；按来源分组、PHB14 在前。warlock 统一为「邪术师」。
 - **种族/专长/装备也已接入**（`race` / `feat` / `equip`，均 **PHB14 基准** + PHB24/扩展追加）：种族 28（PHB14 含半精灵/半兽人，PHB24 已并入故仅在 PHB14 查得到）、专长 140（PHB14 核心 + PHB24/塔莎…）、装备 PHB14 武器+护甲（列序异于 2024、无精通词条）。**dnd5e 现 8 域全通**（spell/monster/class/subclass/race/feat/equip/magic），与 dnd5r 同功能但 2014 优先。
 - 资料库 md 改后跑 `python .claude/skills/dnd5e/tools/build_index.py` 重建。
@@ -363,7 +363,7 @@ magic 雷神之锤                # 魔法物品 → 类型·稀有度·调谐 +
 
 **示例**：
 - 查火球术：`玩家手册/魔法/法术详述/3环.md`（戏法查 `戏法.md`，**不是** 0环）
-- 查角斗士：`怪物图鉴/非玩家角色/角斗士.md`（2014 MM；多数怪物**无 frontmatter**，读 body 文本）
+- 查角斗士：`怪物图鉴/非玩家角色/角斗士.md`（2014 MM；statblock 在正文，已由 CLI 正文解析纳入索引；动作/特性全文 Read 此文件）
 - 查地精：`怪物图鉴/类人生物/地精.md`
 - 查骇异巫妖：`DNDBeyond/怪物纲要1/骇异巫妖.md`（DNDBeyond 系列有结构化 frontmatter）
 - 查武器表：`玩家手册/装备/武器.html`
@@ -665,8 +665,8 @@ magic 雷神之锤                # 魔法物品 → 类型·稀有度·调谐 +
 **回退**（CLI 不可用 / homebrew / 要正文细节 / 索引未覆盖）：
 - Grep `速查/5E万兽大全.html` 找名 → href 的 `.htm/.html` 改 `.md` 再 Read（如 `怪物图鉴/非玩家角色/角斗士.md`）
 - homebrew 怪物：glob `campaigns/<战役名>/homebrew/monsters/` → `homebrew/monsters/`（规则 10）
-- **数据来源**：`怪物图鉴2025/` 与 `DNDBeyond/怪物纲要*/` 有完整 frontmatter；**2014 `怪物图鉴/` 多数无 frontmatter** → 从 body「数据栏」文本提取数值
-- 2014 `怪物图鉴/` 的同类查询：先 `怪物图鉴/<类型>/` 按生物类型目录缩小范围，再 grep body 关键词
+- **数据来源**：`怪物图鉴2025/` 与 `DNDBeyond/怪物纲要*/` 有完整 frontmatter；**2014 `怪物图鉴/`（type:document，statblock 在正文）现已由 build_index 正文解析纳入 CLI**（426 只，priority 0 主显）——数值摘要直接 `query.py monster` 查；**动作/特性/传奇动作全文**仍按 `path:line` Read
+- 极个别正文异形未入索引时（如个别多形态 AC/CR、模组泥怪表）：`怪物图鉴/<类型>/` 按生物类型目录缩小范围，再 grep body 关键词
 
 ### E. 枚举类查询（"X 的全部 / 所有 / 有哪些 Y"）
 
