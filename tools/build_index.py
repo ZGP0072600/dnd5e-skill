@@ -629,7 +629,7 @@ def build_classes(docs_root, out_dir):
 CROSS_RACE_SOURCES = [
     {"dir": "玩家手册2024/角色起源/种族"},                     # dnd5e：PHB24 种族当追加（2024 印次，priority 1）
     {"dir": "剑湾冒险者指南/种族", "noise": ("种族",)},        # 半精灵变体/灰矮人/地底侏儒/鬼智半身人/提夫林变体
-    {"dir": "费资本的巨龙宝库/玩家选项", "include": "龙裔"},    # 宝石/色彩/金属龙裔 + 神选勇士
+    {"dir": "费资本的巨龙宝库/玩家选项", "include": "龙裔", "noise": ("龙裔种族",)},  # 宝石/色彩/金属龙裔（排除"龙裔种族"总览页）
 ]
 
 
@@ -644,6 +644,13 @@ def _race_record(f: Path, docs_root: Path):
         m = re.match(r"^([一-鿿·\s]+?)\s*([A-Za-z].*)$", name)
         if m:
             name, en = m.group(1).strip(), m.group(2).strip()
+    if not en:                                       # 剑湾/费资本：name 仅中文，英文在正文首个 **中文 English** 粗体行
+        pat = re.compile(r"^\*\*\s*" + re.escape(name) + r"\s+([A-Za-z].*?)\s*\*\*")
+        for ln in lines:
+            mm = pat.match(ln.strip())
+            if mm:
+                en = mm.group(1).strip()
+                break
     return {
         "kind": "race", "name": name, "en": en, "flavor": extract_flavor(lines),
         "source": src, "edition": str(fm.get("edition") or ""), "priority": source_priority(src),
@@ -711,7 +718,7 @@ def parse_equip_table(path, docs_root, kind, cols):
         if not name:
             continue
         rec = {"kind": kind, "name": name, "en": en, "category": category,
-               "source": src, "edition": "2024", "priority": source_priority(src),
+               "source": src, "edition": ("2024" if "2024" in src else "2014"), "priority": source_priority(src),
                "path": rel, "line": i + 1}
         for j, col in enumerate(cols):
             rec[col] = cells[1 + j] if 1 + j < len(cells) else None
@@ -837,12 +844,15 @@ def build_magic(docs_root, out_dir):
                 if not s.startswith("##### "):
                     continue
                 name, en = split_cn_en(s[6:].strip())
-                meta = ""                                    # 紧跟的斜体行：*类型，稀有度（需同调）*
+                meta = ""                                    # 紧跟的斜体行：*类型，稀有度（需同调）*（可能与描述文本黏在同一行）
                 for j in range(i + 1, min(i + 5, len(lines))):
                     t = lines[j].strip()
-                    if t.startswith("*") and t.endswith("*") and len(t) > 2:
-                        meta = t.strip("*").strip()
-                        break
+                    if not t:
+                        continue
+                    mm = re.match(r"^\*([^*]{1,40})\*", t)   # 行首斜体段，后面可能紧跟描述文本
+                    if mm:
+                        meta = mm.group(1).strip()
+                    break                                    # 首个非空行即定论（是 meta，或已进入描述正文）
                 if not name:
                     continue
                 recs.append({
