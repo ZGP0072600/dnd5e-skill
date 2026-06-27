@@ -153,7 +153,41 @@ def normalize_level(level, level_name):
         lv = int(level)
     except (TypeError, ValueError):
         return None
-    return 0 if lv < 0 else lv
+    # lv < 0 是占位符（合集类文件用文件级 level:-1，且 level_name 非戏法）。
+    # 绝不当成 0——否则整本书的法术全塌成戏法。返回 None，交给 level_from_body 从正文兜底。
+    return None if lv < 0 else lv
+
+
+CN_NUM = {"零": 0, "一": 1, "二": 2, "三": 3, "四": 4,
+          "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+
+
+def level_from_body(lines, heading_lineno):
+    """合集类文件每条法术的环阶只写在正文里、frontmatter 缺 per-spell level。
+    从标题行往下找首个含环阶记号的内容行 —— 兼容跨书的多种写法（标签可有可无、级/派顺序不定）：
+      - **学派**：一环 塑能      艾奎兹玄/费资本…  (学派标签 + 级在前)
+      - **学派**：塑能 戏法       瓦尔达            (学派标签 + 级在后)
+      戏法 塑能（…）             黯潮之书          (裸行，级在前)
+      塑能 戏法（…）             胧忆岛/火炬克苏鲁  (裸行，级在后)
+    戏法→0；中文/阿拉伯数字环阶→对应数字。取首个命中行（即声明行），避免误吃正文里的
+    『升环施法』等措辞（升环不带数字前缀，不会匹配）。找不到返回 None。"""
+    if not heading_lineno:
+        return None
+    for k in range(heading_lineno, min(heading_lineno + 12, len(lines))):
+        s = lines[k].strip()
+        if not s:
+            continue
+        if s.startswith("#"):
+            break  # 撞到下一条法术标题，停止
+        if "戏法" in s:
+            return 0
+        m = re.search(r"([零一二三四五六七八九十])\s*环", s)
+        if m:
+            return CN_NUM[m.group(1)]
+        m = re.search(r"([0-9])\s*环", s)
+        if m:
+            return int(m.group(1))
+    return None
 
 
 def spell_flags(sp):
@@ -194,10 +228,16 @@ def parse_spell_file(path: Path, docs_root: Path):
         classes = sp.get("classes") or []
         if not isinstance(classes, list):
             classes = [str(classes)]
+        hl = match_heading(name, en, headings, prefer_level=2)
+        level = normalize_level(sp.get("level", fm.get("level")),
+                                sp.get("level_name", fm.get("level_name")))
+        # 兜底：合集类文件 per-spell 无 level、文件级是占位 -1（normalize 后为 None）→
+        # 环阶只写在正文「**学派**：X环」里，从正文解析，避免整本书塌成戏法。
+        if sp.get("level") is None and level is None:
+            level = level_from_body(lines, hl)
         recs.append({
             "name": name, "en": en,
-            "level": normalize_level(sp.get("level", fm.get("level")),
-                                     sp.get("level_name", fm.get("level_name"))),
+            "level": level,
             "school": sp.get("school") or None,
             "classes": [str(c).strip() for c in classes],
             "casting_time": sp.get("casting_time") or None,
@@ -206,7 +246,7 @@ def parse_spell_file(path: Path, docs_root: Path):
             "duration": sp.get("duration") or None,
             "concentration": conc, "ritual": ritual,
             "source": source, "edition": edition, "priority": prio,
-            "path": rel, "line": match_heading(name, en, headings, prefer_level=2),
+            "path": rel, "line": hl,
         })
     return recs, None
 
