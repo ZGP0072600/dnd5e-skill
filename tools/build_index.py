@@ -932,45 +932,75 @@ def build_feats(docs_root, out_dir):
 
 
 # ---------------- 魔法物品 ----------------
-MAGIC_ROOT = "城主指南2024/7.宝藏/魔法物品详述"
+# 2014 DMG（城主指南/宝藏/魔法物品/：**粗体名** + *类型，稀有度* 行）PHB14 基准·主显，
+# + 2024 DMG（城主指南2024/...：##### 名）追加。两版同物时 2014 优先（priority 0 < 1）。
+MAGIC_ROOTS = [
+    ("城主指南/宝藏/魔法物品", "城主指南", "2014", True),                  # bold=True：名字是整行 **粗体**
+    ("城主指南2024/7.宝藏/魔法物品详述", "城主指南2024", "2024", False),
+]
+
+
+def _magic_meta_after(lines, i):
+    """第 i 行之后紧跟的 *类型，稀有度* 斜体行（可能与描述文本黏在同一行）→ meta 字符串，无则 ''。"""
+    for j in range(i + 1, min(i + 5, len(lines))):
+        t = lines[j].strip()
+        if not t:
+            continue
+        mm = re.match(r"^\*([^*]{1,40})\*", t)               # 行首斜体段，后面可能紧跟描述文本
+        return mm.group(1).strip() if mm else ""
+    return ""
+
+
+def _parse_magic_root(root: Path, docs_root: Path, source, edition, bold):
+    recs, per_type = [], {}
+    if not root.is_dir():
+        return recs, per_type
+    prio = source_priority(source)
+    for f in sorted(root.rglob("*.md")):
+        rel = f.relative_to(docs_root).as_posix()
+        parts = f.relative_to(root).parts
+        itype = parts[0] if len(parts) > 1 else "其他"       # 武器/护甲/戒指/药水/卷轴/权杖/法杖/魔杖/奇物
+        rarity = re.sub(r"^(着装|装饰)_", "", f.stem)        # 2014 奇物子类前缀（着装_/装饰_）剥掉
+        lines = f.read_text(encoding="utf-8").split("\n")
+        for i, ln in enumerate(lines):
+            s = ln.strip()
+            if bold:                                         # 2014：整行 **粗体名**，且后随 meta 行（排除描述内粗体引用）
+                m = re.match(r"^\*\*([^*]+)\*\*\s*$", s)
+                if not m:
+                    continue
+                meta = _magic_meta_after(lines, i)
+                if not meta:
+                    continue
+                name, en = split_cn_en(m.group(1).strip())
+            else:                                            # 2024：##### 名
+                if not s.startswith("##### "):
+                    continue
+                meta = _magic_meta_after(lines, i)
+                name, en = split_cn_en(s[6:].strip())
+            if not name:
+                continue
+            recs.append({
+                "kind": "magic", "name": name, "en": en, "item_type": itype, "rarity": rarity,
+                "attunement": ("需同调" in meta or "需调谐" in meta), "meta": meta or None,
+                "source": source, "edition": edition, "priority": prio, "path": rel, "line": i + 1,
+            })
+            per_type[itype] = per_type.get(itype, 0) + 1
+    return recs, per_type
 
 
 def build_magic(docs_root, out_dir):
-    root = docs_root / MAGIC_ROOT
-    recs, per_type = [], {}
-    if root.is_dir():
-        for f in sorted(root.rglob("*.md")):
-            rel = f.relative_to(docs_root).as_posix()
-            parts = f.relative_to(root).parts
-            itype = parts[0] if len(parts) > 1 else "其他"   # 武器/护甲/戒指/药水/卷轴/权杖/法杖/魔杖/奇物
-            rarity = f.stem                                  # 传说/非常稀有/稀有/罕见/普通/神器…
-            lines = f.read_text(encoding="utf-8").split("\n")
-            for i, ln in enumerate(lines):
-                s = ln.strip()
-                if not s.startswith("##### "):
-                    continue
-                name, en = split_cn_en(s[6:].strip())
-                meta = ""                                    # 紧跟的斜体行：*类型，稀有度（需同调）*（可能与描述文本黏在同一行）
-                for j in range(i + 1, min(i + 5, len(lines))):
-                    t = lines[j].strip()
-                    if not t:
-                        continue
-                    mm = re.match(r"^\*([^*]{1,40})\*", t)   # 行首斜体段，后面可能紧跟描述文本
-                    if mm:
-                        meta = mm.group(1).strip()
-                    break                                    # 首个非空行即定论（是 meta，或已进入描述正文）
-                if not name:
-                    continue
-                recs.append({
-                    "kind": "magic", "name": name, "en": en, "item_type": itype, "rarity": rarity,
-                    "attunement": ("需同调" in meta or "需调谐" in meta), "meta": meta or None,
-                    "source": "城主指南2024", "edition": "2024", "priority": 0, "path": rel, "line": i + 1,
-                })
-                per_type[itype] = per_type.get(itype, 0) + 1
+    recs, per_type, by_ed = [], {}, {}
+    for root_rel, source, edition, bold in MAGIC_ROOTS:
+        r, pt = _parse_magic_root(docs_root / root_rel, docs_root, source, edition, bold)
+        recs.extend(r)
+        for k, v in pt.items():
+            per_type[k] = per_type.get(k, 0) + v
+        by_ed[edition] = by_ed.get(edition, 0) + len(r)
     out = out_dir / "magic.json"
     out.write_text(json.dumps({"_schema": "magic-index-v1", "item_count": len(recs), "magic": recs},
                               ensure_ascii=False, indent=0), encoding="utf-8")
-    print(f"\n[魔法物品] ✅ {out}\n   {len(recs)} 件 / {len(per_type)} 类")
+    print(f"\n[魔法物品] ✅ {out}\n   {len(recs)} 件 / {len(per_type)} 类"
+          f"（2014 城主指南:{by_ed.get('2014', 0)} + 2024:{by_ed.get('2024', 0)}）")
     print("   按类:", "、".join(f"{t}:{n}" for t, n in sorted(per_type.items(), key=lambda x: -x[1])))
 
 
