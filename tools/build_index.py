@@ -342,6 +342,104 @@ def parse_monster_file(path: Path, docs_root: Path, kind: str):
     return base, None
 
 
+# ------------- 2014《怪物图鉴》正文 statblock 解析 -------------
+# 2014 MM 文件是 type:document，statblock 写在正文散文里（一文件常多只怪、字段常跑在一行），
+# read_type 不会归类为 monster。这里专门解析它们补进怪物索引（PHB14 基准 → priority 0）。
+MM_SIZE = r'(?:超巨型|超大型|超小型|微型|小型|中型|大型|巨型)'
+MM_ALIGN = (r'(?:(?:守序|混乱|中立|绝对)?(?:善良|邪恶|中立)|无阵营|'
+            r'(?:任意|任何)[^\s，*]{0,6}阵营|不结盟|未结盟)')
+MM_HEADER = re.compile(r'(' + MM_SIZE + r')((?:[^，（\s]|（[^）]*）)*)，\s*(' + MM_ALIGN + r')')
+MM_STOP = (r'(?:护甲等级|生命值|速度|豁免|技能|伤害抗性|伤害免疫|伤害易伤|伤害吸收|'
+           r'状态免疫|状态抗性|感官|语言|挑战等级|动作|反应|传奇动作)')
+
+
+def _mm_field(chunk, label):
+    m = re.search(label + r'[：:]\s*(.+?)\s*(?=' + MM_STOP + r'[：:]|$)', chunk)
+    return (m.group(1).strip() or None) if m else None
+
+
+def _mm_list(s):
+    if not s or s.strip() in ('——', '—', '-', '无', '不'):
+        return []
+    return [p.strip() for p in re.split(r'[，、/;；]', s) if p.strip()]
+
+
+def parse_mm2014_file(path: Path, docs_root: Path):
+    """一个 2014 MM 文件 → 0..N 条怪物记录。字段从正文 statblock 抽取（兼容字段跑在一行、
+    名字换行/与头部同行、护甲/挑战等级有无冒号等多种写法）。"""
+    rel = path.relative_to(docs_root).as_posix()
+    try:
+        fm_str, lines = split_frontmatter(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if fm_str is None:
+        return []
+    source, prio = derive_source(rel), source_priority(derive_source(rel))
+    headers = []                                  # (行号, size, ctype, align, 同行名字前缀)
+    for i, ln in enumerate(lines):
+        raw = ln.strip()
+        if not raw:
+            continue
+        flat = raw.replace("*", " ")              # 抹掉 *斜体*/**粗体**：名字与头部可能同一行
+        m = MM_HEADER.search(flat)
+        if not m:
+            continue
+        ctype = re.sub(r'（[^）]*）', '', m.group(2)).strip()
+        headers.append((i, m.group(1), ctype, m.group(3).strip(), flat[:m.start()].strip()))
+    recs = []
+    for idx, (hi, size, ctype, align, prefix) in enumerate(headers):
+        if prefix and re.search(r'[一-鿿]', prefix):    # 名字与头部同行（刺客/老兵）
+            name, en = split_cn_en(prefix)
+        else:                                           # 名字在上方，可能换行（恐狼 Dire / Wolf）
+            ni = hi - 1
+            while ni >= 0 and not lines[ni].strip():
+                ni -= 1
+            nb = []
+            while ni >= 0 and lines[ni].strip() and len(nb) < 3:
+                nb.insert(0, lines[ni].strip())
+                ni -= 1
+            name, en = split_cn_en(re.sub(r'\*+', '', ' '.join(nb)))
+        if not name:
+            continue
+        end = headers[idx + 1][0] if idx + 1 < len(headers) else len(lines)
+        chunk = ' '.join(l.strip() for l in lines[hi:end] if l.strip())
+        crm = re.search(r'挑战等级[：:]?[^0-9]{0,14}?([\d/]+)', chunk)
+        xpm = re.search(r'挑战等级.{0,18}?（\s*([\d,]+)\s*[Xx]', chunk)
+        acm = re.search(r'护甲等级[：:]?[^0-9]{0,12}?(\d+)', chunk)   # 容忍"类人形态下10"等前缀（兽化人多形态 AC）
+        hpm = re.search(r'生命值[：:]?\s*(\d+)', chunk)
+        hpd = re.search(r'生命值[：:]?\s*\d+\s*（([^）]+)）', chunk)
+        spd = re.search(r'速度[：:]?\s*(.+?)\s*(?=力量\s*\d|$)', chunk)
+
+        def ab(lbl):
+            mm = re.search(lbl + r'\s*(\d+)', chunk)
+            return int(mm.group(1)) if mm else None
+        abilities = {k: v for k, v in (("str", ab("力量")), ("dex", ab("敏捷")),
+                     ("con", ab("体质")), ("int", ab("智力")), ("wis", ab("感知")),
+                     ("cha", ab("魅力"))) if v is not None}
+        cr = crm.group(1) if crm else None
+        recs.append({
+            "kind": "monster", "name": name, "en": en,
+            "source": source, "edition": "2014", "priority": prio, "path": rel, "line": hi + 1,
+            "size": size, "creature_type": ctype, "alignment": align,
+            "cr": cr, "cr_num": cr_to_num(cr),
+            "xp": int(xpm.group(1).replace(",", "")) if xpm else None, "pb": None,
+            "ac": int(acm.group(1)) if acm else None,
+            "hp": int(hpm.group(1)) if hpm else None,
+            "hp_dice": hpd.group(1) if hpd else None,
+            "speed": spd.group(1).strip() if spd else None,         # 字符串，_fmt_dict 走非 dict 兜底
+            "abilities": abilities or None,
+            "saves": _mm_field(chunk, "豁免"), "skills": _mm_field(chunk, "技能"),
+            "damage_resist": _mm_list(_mm_field(chunk, "伤害抗性")),
+            "damage_immune": _mm_list(_mm_field(chunk, "伤害免疫")),
+            "damage_vuln": _mm_list(_mm_field(chunk, "伤害易伤")),
+            "condition_immune": _mm_list(_mm_field(chunk, "状态免疫")),
+            "senses": _mm_field(chunk, "感官"),                     # 字符串，同上
+            "languages": _mm_list(_mm_field(chunk, "语言")),
+            "family": None,
+        })
+    return recs
+
+
 # ---------------- 构建 ----------------
 def build_spells(files, docs_root, out_dir):
     recs, errors, line_miss, per_src = [], [], 0, {}
@@ -370,7 +468,7 @@ def build_spells(files, docs_root, out_dir):
         print(f"   ⚠ 跳过 {len(errors)} 文件: " + "; ".join(errors[:5]))
 
 
-def build_monsters(mfiles, ffiles, docs_root, out_dir):
+def build_monsters(mfiles, ffiles, mm2014_files, docs_root, out_dir):
     recs, errors, line_miss, per_src = [], [], 0, {}
     for p in mfiles:
         r, err = parse_monster_file(p, docs_root, "monster")
@@ -386,6 +484,13 @@ def build_monsters(mfiles, ffiles, docs_root, out_dir):
         if err:
             errors.append(err); continue
         recs.append(r); fam += 1
+    # 2014《怪物图鉴》正文 statblock（type:document，read_type 不归类为 monster）
+    mm_count = 0
+    for p in mm2014_files:
+        for r in parse_mm2014_file(p, docs_root):
+            recs.append(r)
+            mm_count += 1
+            per_src[r["source"]] = per_src.get(r["source"], 0) + 1
     # 回填 frontmatter 缺失的 cr（源转换截断的 statblock）
     crmap = load_monster_cr_map(docs_root)
     backfilled = 0
@@ -404,6 +509,7 @@ def build_monsters(mfiles, ffiles, docs_root, out_dir):
     print(f"\n[怪物] ✅ {out}")
     print(f"   {len(recs) - fam} 怪物 + {fam} 族首页 / {len(per_src)} 书 / 行号未命中 {line_miss}")
     print(f"   CR 回填 {backfilled} 条（从 5E万兽大全）/ 仍无CR {no_cr}")
+    print(f"   2014《怪物图鉴》正文解析 {mm_count} 只（type:document，PHB14 基准）")
     print("   按来源:", "、".join(f"{s}:{n}" for s, n in sorted(per_src.items(), key=lambda x: -x[1])[:8]))
     if errors:
         print(f"   ⚠ 跳过 {len(errors)} 文件: " + "; ".join(errors[:5]))
@@ -881,7 +987,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"资料库: {docs_root}")
 
-    spell_files, monster_files, family_files = [], [], []
+    spell_files, monster_files, family_files, mm2014_files = [], [], [], []
     for p in docs_root.rglob("*.md"):
         t = read_type(p)
         if t == "spell_collection":
@@ -890,12 +996,15 @@ def main():
             monster_files.append(p)
         elif t == "monster_family":
             family_files.append(p)
-    print(f"扫描: 法术集 {len(spell_files)} / 怪物 {len(monster_files)} / 怪物族 {len(family_files)}")
+        elif t == "document" and p.relative_to(docs_root).as_posix().startswith("怪物图鉴/"):
+            mm2014_files.append(p)
+    print(f"扫描: 法术集 {len(spell_files)} / 怪物 {len(monster_files)} / 怪物族 {len(family_files)}"
+          f" / MM14正文 {len(mm2014_files)}")
 
     if args.only in (None, "spells"):
         build_spells(sorted(spell_files), docs_root, out_dir)
     if args.only in (None, "monsters"):
-        build_monsters(sorted(monster_files), sorted(family_files), docs_root, out_dir)
+        build_monsters(sorted(monster_files), sorted(family_files), sorted(mm2014_files), docs_root, out_dir)
     # ✅ 目录域已全改 PHB14 基准（build_classes/races/feats/equipment：玩家手册/ + 2024/扩展当追加）。
     if args.only in (None, "classes"):
         build_classes(docs_root, out_dir)
